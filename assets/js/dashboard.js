@@ -3,6 +3,7 @@ import "./common.js";
 import { toast, esc } from "./common.js";
 import { store, friendlyError } from "./store.js";
 import { site } from "./config.js";
+import { mailSubmitted } from "./mail.js";
 import { STEPS, STATUS, FLOW, flatFields, MONEY, money } from "./schema.js";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.ppt,.pptx,.doc,.docx,.xls,.xlsx";
@@ -261,7 +262,7 @@ async function submit() {
   app.applicationId ||= "SFS-" + new Date().getFullYear() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase();
   app.submittedAt = now;
   app.timeline = [...app.timeline, { status: "submitted", at: now }];
-  if (await save(true)) { toast("Application submitted"); renderStatus(); }
+  if (await save(true)) { toast("Application submitted"); renderStatus(); mailSubmitted(app); }
   else { Object.assign(app, prev); btn.disabled = false; btn.textContent = "Submit application"; }
 }
 

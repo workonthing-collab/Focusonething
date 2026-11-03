@@ -120,25 +120,31 @@ export const store = {
     return payload;
   },
 
-  // ── Admin ────────────────────────────────────────────────────
-  async isAdmin(uid) {
-    if (DEMO_MODE) return true; // demo: any logged-in user can open the admin view
+  // ── Staff (admins & reviewers) ───────────────────────────────
+  // Returns "admin", "reviewer" or null
+  async getRole(uid) {
+    if (DEMO_MODE) return LS.get("sfs_demo_role", "admin");
     const { db, F } = await loadFirebase();
-    try { return (await F.getDoc(F.doc(db, "admins", uid))).exists(); } catch { return false; }
+    const has = async c => { try { return (await F.getDoc(F.doc(db, c, uid))).exists(); } catch { return false; } };
+    if (await has("admins")) return "admin";
+    if (await has("reviewers")) return "reviewer";
+    return null;
   },
 
-  // Returns [{ uid, ...application }]
-  async listApplications() {
+  // Admin: all applications. Reviewer: only those assigned to them.
+  async listApplications(role = "admin", uid = "") {
     if (DEMO_MODE) {
       const out = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (k.startsWith("sfs_app_")) out.push({ uid: k.slice(8), ...LS.get(k, {}) });
       }
-      return out;
+      return role === "reviewer" ? out.filter(a => (a.assignedTo || []).includes(uid)) : out;
     }
     const { db, F } = await loadFirebase();
-    const snap = await F.getDocs(F.collection(db, "applications"));
+    const col = F.collection(db, "applications");
+    const q = role === "reviewer" ? F.query(col, F.where("assignedTo", "array-contains", uid)) : col;
+    const snap = await F.getDocs(q);
     return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   },
 
@@ -149,7 +155,7 @@ export const store = {
     await F.updateDoc(F.doc(db, "applications", uid), p);
   },
 
-  // Private review notes (never visible to applicants)
+  // Private admin notes for an application (never visible to applicants)
   async getReview(uid) {
     if (DEMO_MODE) return LS.get("sfs_review_" + uid, { notes: [] });
     const { db, F } = await loadFirebase();
@@ -161,6 +167,48 @@ export const store = {
     if (DEMO_MODE) { LS.set("sfs_review_" + uid, data); return; }
     const { db, F } = await loadFirebase();
     await F.setDoc(F.doc(db, "reviews", uid), data);
+  },
+
+  // Scorecards: one per scorer. Admin gets all; reviewer gets only their own.
+  async getScores(appUid, role, uid) {
+    if (DEMO_MODE) {
+      const all = LS.get("sfs_scores_" + appUid, {});
+      return role === "admin" ? all : (all[uid] ? { [uid]: all[uid] } : {});
+    }
+    const { db, F } = await loadFirebase();
+    if (role === "admin") {
+      const snap = await F.getDocs(F.collection(db, "reviews", appUid, "scores"));
+      return Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    }
+    const s = await F.getDoc(F.doc(db, "reviews", appUid, "scores", uid));
+    return s.exists() ? { [uid]: s.data() } : {};
+  },
+
+  async saveScore(appUid, uid, card) {
+    const c = { ...card, at: new Date().toISOString() };
+    if (DEMO_MODE) { const all = LS.get("sfs_scores_" + appUid, {}); all[uid] = c; LS.set("sfs_scores_" + appUid, all); return; }
+    const { db, F } = await loadFirebase();
+    await F.setDoc(F.doc(db, "reviews", appUid, "scores", uid), c);
+  },
+
+  // Reviewer accounts: { uid, name, email }
+  async listReviewers() {
+    if (DEMO_MODE) return Object.entries(LS.get("sfs_reviewers", {})).map(([uid, r]) => ({ uid, ...r }));
+    const { db, F } = await loadFirebase();
+    const snap = await F.getDocs(F.collection(db, "reviewers"));
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  },
+
+  async addReviewer(uid, info) {
+    if (DEMO_MODE) { const r = LS.get("sfs_reviewers", {}); r[uid] = info; LS.set("sfs_reviewers", r); return; }
+    const { db, F } = await loadFirebase();
+    await F.setDoc(F.doc(db, "reviewers", uid), { ...info, addedAt: new Date().toISOString() });
+  },
+
+  async removeReviewer(uid) {
+    if (DEMO_MODE) { const r = LS.get("sfs_reviewers", {}); delete r[uid]; LS.set("sfs_reviewers", r); return; }
+    const { db, F } = await loadFirebase();
+    await F.deleteDoc(F.doc(db, "reviewers", uid));
   },
 
   // Returns { name, size, type, path, url, uploadedAt }

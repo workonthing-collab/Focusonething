@@ -5,10 +5,15 @@ service firebase.storage {
       return request.auth != null
         && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
     }
+    function isAssignedReviewer(appId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/reviewers/$(request.auth.uid))
+        && request.auth.uid in firestore.get(/databases/(default)/documents/applications/$(appId)).data.get('assignedTo', []);
+    }
 
     // applications/{uid}/{docKey}/{file}
     match /applications/{uid}/{docKey}/{fileName} {
-      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin() || isAssignedReviewer(uid);
       allow create: if request.auth != null && request.auth.uid == uid
                     && request.resource.size < 10 * 1024 * 1024;
       allow update, delete: if false;

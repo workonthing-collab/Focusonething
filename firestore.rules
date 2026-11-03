@@ -2,34 +2,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Admins are listed in /admins/{uid} (used from Phase 2).
+    function signedIn() { return request.auth != null; }
+    // Admins are listed in /admins/{uid}, reviewers in /reviewers/{uid}.
     function isAdmin() {
-      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function isReviewer() {
+      return signedIn() && exists(/databases/$(database)/documents/reviewers/$(request.auth.uid));
+    }
+    function assignedTo(appId) {
+      return get(/databases/$(database)/documents/applications/$(appId)).data.get('assignedTo', []);
     }
 
     match /applications/{uid} {
-      // Applicant can read their own application; admins can read all.
-      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      // Applicant reads own; admins read all; reviewers read only applications assigned to them.
+      allow read: if (signedIn() && request.auth.uid == uid)
+                  || isAdmin()
+                  || (isReviewer() && request.auth.uid in resource.data.get('assignedTo', []));
 
       // Applicant can create/edit only while it's a draft, and can only move it to "submitted".
-      allow create: if request.auth != null && request.auth.uid == uid
+      allow create: if signedIn() && request.auth.uid == uid
                     && request.resource.data.status in ['draft', 'submitted'];
-      allow update: if request.auth != null && request.auth.uid == uid
+      allow update: if signedIn() && request.auth.uid == uid
                     && resource.data.status == 'draft'
                     && request.resource.data.status in ['draft', 'submitted'];
 
-      // Admins can change status / notes.
+      // Admins can change status, notes and reviewer assignment.
       allow update: if isAdmin();
       allow delete: if false;
     }
 
-    // Private review notes and scores — admins only.
-    match /reviews/{uid} {
+    // Private admin notes — admins only.
+    match /reviews/{appId} {
       allow read, write: if isAdmin();
+
+      // One scorecard per scorer. Scorer writes their own; admins read all.
+      match /scores/{scorer} {
+        allow read: if isAdmin() || (signedIn() && request.auth.uid == scorer);
+        allow write: if signedIn() && request.auth.uid == scorer
+                     && (isAdmin() || (isReviewer() && request.auth.uid in assignedTo(appId)));
+      }
+    }
+
+    match /reviewers/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if isAdmin();
     }
 
     match /admins/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false; // add admins from the Firebase console only
     }
   }

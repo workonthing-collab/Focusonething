@@ -11,7 +11,7 @@ Static site (HTML/CSS/JS) hosted on GitHub Pages, with Firebase for login, datab
 | `index.html` | Public site: about, eligibility, process, documents, FAQs, contact |
 | `login.html` | Sign up / log in / forgot password |
 | `dashboard.html` | Applicant dashboard: application form, uploads, review & submit, status tracker |
-| `admin.html` | Admin console: filter/search applications, full detail with documents, change status, message applicant, private scores & notes, CSV export |
+| `admin.html` | Staff console. **Admins:** filter/search applications, full detail with documents, change status, message/email applicant, assign reviewers, scorecards, private notes, CSV export, manage reviewers. **Reviewers:** only applications assigned to them, with their own scorecard |
 
 ## Demo mode
 
@@ -27,9 +27,31 @@ Until Firebase is configured in `assets/js/config.js`, the portal runs in **demo
    Open the **Rules** tab → paste the contents of `firestore.rules` → Publish.
 5. **Storage → Get started** (needs the Blaze pay-as-you-go plan; the free usage tier still applies) → same region → **Rules** tab → paste `storage.rules` → Publish.
 6. **Make yourself admin:** sign up on the portal with your admin email → open `admin.html` (it shows your user ID) → Firestore → **Start collection** `admins` → Document ID = that user ID → add any field (e.g. `email`) → Save. Reload `admin.html`.
-7. Edit `site.email` in `assets/js/config.js` to your real support email.
+7. **Add reviewers (optional):** reviewer signs up on the portal → opens `admin.html` and sends you the user ID it shows → you open `admin.html#team` (or the **Reviewers** button) → add ID, name, email. Then tick reviewers on any application to assign it.
+8. Edit `site.email` and `site.adminEmail` in `assets/js/config.js` to your real support email.
 
 The Firebase web config is safe to publish. Access is controlled by the security rules.
+
+## Email notifications (optional)
+
+Uses [EmailJS](https://www.emailjs.com) (free plan: 200 emails/month). With it set up:
+- the applicant gets a confirmation email when they submit,
+- you (`site.adminEmail`) get an alert for every new application,
+- the applicant gets an email when you change their status (tick box on the admin page).
+
+Setup:
+1. Create an EmailJS account → **Email Services** → add Gmail (or your domain's SMTP) → note the **Service ID**.
+2. **Email Templates → Create** with:
+   - To email: `{{to_email}}`
+   - From name: `{{site_name}}`, Reply-to: `{{reply_to}}`
+   - Subject: `{{subject}}`
+   - Content: `{{message}}`
+   Save and note the **Template ID**.
+3. **Account → General** → copy the **Public Key**.
+4. Paste all three into `emailjs` in `assets/js/config.js`.
+5. In EmailJS **Account → Security**, restrict allowed origins to `https://srujanfundsupport.in`.
+
+Leave the keys blank to keep emails off; everything else still works.
 
 ## Status flow
 
@@ -41,5 +63,5 @@ Applicants can edit only while in `draft`. After submission, only admins can cha
 
 - **Phase 1 (done):** public site, applicant signup, application, uploads, status
 - **Phase 2 (done):** admin console: list/filter applications, view documents, change status, notes, scoring, CSV export
-- **Phase 3:** reviewer role with scoring, email notifications
+- **Phase 3 (done):** reviewer role, per-reviewer scorecards with average, reviewer assignment, email notifications
 - **Phase 4:** disbursement/tranche tracking, reports

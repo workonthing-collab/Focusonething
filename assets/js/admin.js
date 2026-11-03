@@ -1,7 +1,8 @@
-// Admin console: list, filter, review, change status, notes, scoring, CSV export.
+// Staff console. Admin: everything. Reviewer: assigned applications + own scorecard.
 import "./common.js";
 import { toast, esc } from "./common.js";
 import { store, friendlyError } from "./store.js";
+import { mailStatus, mailEnabled } from "./mail.js";
 import { STEPS, STATUS, STATES, SECTORS, flatFields, MONEY, money } from "./schema.js";
 
 const root = document.getElementById("root");
@@ -12,7 +13,9 @@ const CRITERIA = [
 ];
 
 let user = null;
+let role = null;
 let apps = [];
+let reviewers = [];
 const filt = { q: "", status: "", sector: "", state: "", sort: "submittedAt", dir: -1 };
 
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -27,10 +30,12 @@ store.onUser(async u => {
   if (user && user.uid === u.uid) return;
   user = u;
   document.getElementById("userEmail").textContent = u.email;
-  if (!(await store.isAdmin(u.uid))) {
+  role = await store.getRole(u.uid);
+  if (store.demo) demoRoleSwitch();
+  if (!role) {
     root.innerHTML = `<div class="panel" style="max-width:560px;margin:40px auto;text-align:center">
-      <h2>Admin access required</h2>
-      <p class="muted">This account (${esc(u.email)}) is not an admin. Ask the portal owner to add your user ID to the <code>admins</code> list.</p>
+      <h2>Staff access required</h2>
+      <p class="muted">This account (${esc(u.email)}) is not an admin or reviewer. Send the user ID below to the portal admin to get access.</p>
       <p class="small muted">Your user ID: <code>${esc(u.uid)}</code></p>
       <a class="btn btn-outline" href="dashboard.html">Go to applicant dashboard</a></div>`;
     return;
@@ -41,12 +46,17 @@ store.onUser(async u => {
 });
 
 async function load() {
-  try { apps = await store.listApplications(); }
+  try {
+    apps = await store.listApplications(role, user.uid);
+    if (role === "admin") reviewers = await store.listReviewers();
+  }
   catch (e) { root.innerHTML = `<div class="alert alert-error">Couldn't load applications. ${esc(friendlyError(e))}</div>`; apps = []; }
 }
 
 function route() {
-  const id = new URLSearchParams(location.hash.slice(1)).get("app");
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.has("team") && role === "admin") return renderTeam();
+  const id = h.get("app");
   id ? renderDetail(id) : renderList();
 }
 
@@ -76,12 +86,16 @@ function renderList() {
 
   root.innerHTML = `
     <div class="dash-head">
-      <div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Applications</h1></div>
-      <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button><button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button></div>
+      <div><p class="small muted" style="margin:0 0 4px">${role === "admin" ? "Admin console" : "Reviewer console"}</p><h1>${role === "admin" ? "Applications" : "Assigned to you"}</h1></div>
+      <div style="display:flex;gap:8px">
+        ${role === "admin" ? `<a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
+        <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
+        ${role === "admin" ? `<button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button>` : ""}
+      </div>
     </div>
     <div class="stats">
       <button class="stat${!filt.status ? " active" : ""}" data-st=""><div class="n">${total}</div><div class="l">All submitted</div></button>
-      ${["under_review", "shortlisted", "selected", "rejected", "draft"].map(s => `<button class="stat${filt.status === s ? " active" : ""}" data-st="${s}"><div class="n">${counts[s]}</div><div class="l">${s === "draft" ? "Drafts (not submitted)" : STATUS[s]}</div></button>`).join("")}
+      ${["under_review", "shortlisted", "selected", "rejected", ...(role === "admin" ? ["draft"] : [])].map(s => `<button class="stat${filt.status === s ? " active" : ""}" data-st="${s}"><div class="n">${counts[s]}</div><div class="l">${s === "draft" ? "Drafts (not submitted)" : STATUS[s]}</div></button>`).join("")}
     </div>
     <div class="filters">
       <input id="q" type="text" placeholder="Search company, founder, email, ID…" value="${esc(filt.q)}">
@@ -100,7 +114,7 @@ function renderList() {
   root.querySelector("#fState").addEventListener("change", e => { filt.state = e.target.value; drawTable(); });
   root.querySelector("#clearBtn").addEventListener("click", () => { Object.assign(filt, { q: "", status: "", sector: "", state: "" }); renderList(); });
   root.querySelector("#refreshBtn").addEventListener("click", async () => { await load(); renderList(); toast("Refreshed"); });
-  root.querySelector("#csvBtn").addEventListener("click", exportCSV);
+  root.querySelector("#csvBtn")?.addEventListener("click", exportCSV);
 }
 
 function drawTable() {
@@ -108,7 +122,7 @@ function drawTable() {
   const th = (k, l) => `<th data-sort="${k}">${l}${filt.sort === k ? (filt.dir > 0 ? " ↑" : " ↓") : ""}</th>`;
   const wrap = root.querySelector("#tableWrap");
   wrap.innerHTML = rows.length ? `<table class="data"><thead><tr>
-      <th>App ID</th>${th("companyName", "Company")}<th>Founder</th><th>Location</th><th>Sector / stage</th>${th("amountAsked", "Ask")}${th("submittedAt", "Submitted")}<th>Status</th>
+      <th>App ID</th>${th("companyName", "Company")}<th>Founder</th><th>Location</th><th>Sector / stage</th>${th("amountAsked", "Ask")}${th("submittedAt", "Submitted")}${role === "admin" ? "<th>Reviewers</th>" : ""}<th>Status</th>
     </tr></thead><tbody>${rows.map(a => `<tr data-open="${esc(a.uid)}">
       <td class="small">${esc(a.applicationId || "—")}</td>
       <td><b>${esc(D(a).companyName || "Untitled")}</b>${D(a).brandName ? `<div class="small muted">${esc(D(a).brandName)}</div>` : ""}</td>
@@ -117,6 +131,7 @@ function drawTable() {
       <td>${esc(D(a).sector || "")}<div class="small muted">${esc(D(a).stage || "")}</div></td>
       <td>${esc(money(D(a).amountAsked) || "—")}</td>
       <td class="small">${fmtDate(a.submittedAt)}</td>
+      ${role === "admin" ? `<td class="small">${esc((a.assignedTo || []).map(rName).join(", ") || "—")}</td>` : ""}
       <td>${badge(a.status)}</td></tr>`).join("")}</tbody></table>`
     : `<div class="empty">No applications match these filters.</div>`;
   wrap.querySelectorAll("[data-sort]").forEach(h => h.addEventListener("click", () => {
@@ -144,14 +159,34 @@ function exportCSV() {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
+const rName = id => reviewers.find(r => r.uid === id)?.name || (id === user?.uid ? "You" : "Reviewer");
+
+// Demo only: switch between admin and reviewer views to try both.
+function demoRoleSwitch() {
+  const bar = document.querySelector(".demo-banner");
+  if (!bar || bar.querySelector("select")) return;
+  bar.insertAdjacentHTML("beforeend", ` &nbsp;View as: <select id="demoRole" style="width:auto;padding:2px 6px;font-size:.8rem"><option value="admin">Admin</option><option value="reviewer">Reviewer</option></select>`);
+  const s = bar.querySelector("#demoRole");
+  s.value = role || "admin";
+  s.addEventListener("change", () => { localStorage.setItem("sfs_demo_role", JSON.stringify(s.value)); location.hash = ""; location.reload(); });
+}
+
 // ── Detail ────────────────────────────────────────────────────
+const scoreTotal = sc => CRITERIA.reduce((t, [k]) => t + (+sc?.[k] || 0), 0);
+const MAX = CRITERIA.length * 5;
+
 async function renderDetail(uid) {
   const a = apps.find(x => x.uid === uid);
-  if (!a) { root.innerHTML = `<div class="alert alert-error">Application not found.</div><a class="btn btn-outline" href="admin.html">← All applications</a>`; return; }
+  if (!a) { root.innerHTML = `<div class="alert alert-error">Application not found or not assigned to you.</div><a class="btn btn-outline" href="admin.html">← Back</a>`; return; }
   root.innerHTML = `<div class="spinner"></div>`;
-  let review;
-  try { review = await store.getReview(uid); } catch { review = { notes: [] }; }
-  review.notes ||= []; review.scores ||= {};
+  const isAdmin = role === "admin";
+  let review = { notes: [] }, cards = {};
+  try {
+    [review, cards] = await Promise.all([isAdmin ? store.getReview(uid) : Promise.resolve({ notes: [] }), store.getScores(uid, role, user.uid)]);
+  } catch (e) { toast(friendlyError(e)); }
+  review.notes ||= [];
+  const mine = cards[user.uid] || { scores: {}, comment: "", recommendation: "" };
+  mine.scores ||= {};
 
   const groups = STEPS.filter(s => s.id !== "review").map(s => {
     const docs = (s.docs || []).map(d => {
@@ -166,10 +201,14 @@ async function renderDetail(uid) {
     return `<div class="summary-group"><h3>${esc(s.title)}</h3><table class="summary-table">${docs}${fields}</table></div>`;
   }).join("");
 
-  const total = CRITERIA.reduce((t, [k]) => t + (+review.scores[k] || 0), 0);
+  // Other scorers' cards (admin only)
+  const others = Object.entries(cards).filter(([k]) => k !== user.uid);
+  const allTotals = Object.values(cards).map(c => scoreTotal(c.scores)).filter(t => t > 0);
+  const avg = allTotals.length ? (allTotals.reduce((x, y) => x + y, 0) / allTotals.length).toFixed(1) : null;
+  const assigned = a.assignedTo || [];
 
   root.innerHTML = `
-    <p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <p style="margin:0 0 12px"><a href="admin.html" class="small">← ${isAdmin ? "All applications" : "Assigned applications"}</a></p>
     <div class="dash-head">
       <div>
         <p class="small muted" style="margin:0 0 4px">${esc(a.applicationId || "Draft")} · submitted ${fmtDate(a.submittedAt)}</p>
@@ -181,6 +220,7 @@ async function renderDetail(uid) {
     <div class="admin-grid">
       <section class="panel">${groups}</section>
       <aside class="admin-side">
+        ${isAdmin ? `
         <div class="panel">
           <h2 style="font-size:1.05rem">Update status</h2>
           <div class="field"><label for="newStatus">Status</label>
@@ -188,43 +228,84 @@ async function renderDetail(uid) {
           <div class="field"><label for="adminNote">Message to applicant</label>
             <textarea id="adminNote" style="min-height:90px" placeholder="Shown on the applicant's dashboard">${esc(a.adminNote || "")}</textarea>
             <p class="hint">Visible to the applicant. Leave blank for none.</p></div>
+          <div class="field" style="display:flex;gap:8px;align-items:flex-start">
+            <input type="checkbox" id="sendMail" ${mailEnabled ? "checked" : "disabled"} style="margin-top:4px">
+            <label for="sendMail" style="font-weight:400;font-size:.85rem;margin:0">Email the applicant about this update${mailEnabled ? "" : " <span class='muted'>(set up email in config to enable)</span>"}</label>
+          </div>
           <button class="btn btn-primary" style="width:100%" id="saveStatus">Save</button>
         </div>
         <div class="panel">
-          <h2 style="font-size:1.05rem">Score <span class="small muted">(private)</span></h2>
-          ${CRITERIA.map(([k, l]) => `<div class="score-row"><span>${l}</span><select data-score="${k}"><option value="">–</option>${[1, 2, 3, 4, 5].map(n => `<option${+review.scores[k] === n ? " selected" : ""}>${n}</option>`).join("")}</select></div>`).join("")}
-          <div class="score-row" style="border-top:1px solid var(--line);padding-top:10px"><b>Total</b><span class="score-total" id="scoreTotal">${total} / ${CRITERIA.length * 5}</span></div>
+          <h2 style="font-size:1.05rem">Assigned reviewers</h2>
+          ${reviewers.length ? reviewers.map(r => `<label style="display:flex;gap:8px;font-weight:400;font-size:.9rem;margin-bottom:8px"><input type="checkbox" data-assign="${esc(r.uid)}" ${assigned.includes(r.uid) ? "checked" : ""}> ${esc(r.name)} <span class="muted small">${esc(r.email || "")}</span></label>`).join("")
+            : `<p class="small muted">No reviewers yet. <a href="#team">Add reviewers</a></p>`}
+        </div>` : ""}
+        <div class="panel">
+          <h2 style="font-size:1.05rem">Your scorecard <span class="small muted">(private)</span></h2>
+          ${CRITERIA.map(([k, l]) => `<div class="score-row"><span>${l}</span><select data-score="${k}"><option value="">–</option>${[1, 2, 3, 4, 5].map(n => `<option${+mine.scores[k] === n ? " selected" : ""}>${n}</option>`).join("")}</select></div>`).join("")}
+          <div class="score-row" style="border-top:1px solid var(--line);padding-top:10px"><b>Total</b><span class="score-total" id="scoreTotal">${scoreTotal(mine.scores)} / ${MAX}</span></div>
+          <div class="field"><label for="rec">Recommendation</label>
+            <select id="rec"><option value="">—</option>${["Strongly recommend", "Recommend", "Neutral", "Do not recommend"].map(o => `<option${mine.recommendation === o ? " selected" : ""}>${o}</option>`).join("")}</select></div>
+          <div class="field"><label for="comment">Comments</label><textarea id="comment" style="min-height:80px">${esc(mine.comment || "")}</textarea></div>
+          <button class="btn btn-outline btn-sm" id="saveCard">Save scorecard</button>
+          <span class="small muted" id="cardState" style="margin-left:8px">${mine.at ? "Saved " + fmtDT(mine.at) : ""}</span>
+        </div>
+        ${isAdmin ? `
+        <div class="panel">
+          <h2 style="font-size:1.05rem">All scorecards ${avg ? `<span class="score-total" style="float:right">avg ${avg} / ${MAX}</span>` : ""}</h2>
+          ${others.length ? others.map(([k, c]) => `<div class="note"><b>${esc(c.by || rName(k))}</b> — ${scoreTotal(c.scores)} / ${MAX}${c.recommendation ? ` · ${esc(c.recommendation)}` : ""}${c.comment ? `<div style="margin-top:4px">${esc(c.comment)}</div>` : ""}<div class="meta">${fmtDT(c.at)}</div></div>`).join("") : '<p class="small muted">No reviewer scorecards yet.</p>'}
         </div>
         <div class="panel">
           <h2 style="font-size:1.05rem">Internal notes <span class="small muted">(private)</span></h2>
           <div id="notes">${review.notes.length ? review.notes.map(n => `<div class="note">${esc(n.text)}<div class="meta">${esc(n.by)} · ${fmtDT(n.at)}</div></div>`).join("") : '<p class="small muted">No notes yet.</p>'}</div>
           <textarea id="newNote" style="min-height:70px;margin-top:8px" placeholder="Add a note for your team"></textarea>
           <button class="btn btn-outline btn-sm" style="margin-top:8px" id="addNote">Add note</button>
-        </div>
+        </div>` : ""}
         <div class="panel">
           <h2 style="font-size:1.05rem">History</h2>
-          <ul class="timeline">${(a.timeline || []).slice().reverse().map(t => `<li class="done"><span class="dot"></span><b>${STATUS[t.status] || t.status}</b><span>${fmtDT(t.at)}${t.by ? " · " + esc(t.by) : ""}</span></li>`).join("") || '<li><span class="dot"></span><b>Draft</b><span>Not submitted yet</span></li>'}</ul>
+          <ul class="timeline">${(a.timeline || []).slice().reverse().map(t => `<li class="done"><span class="dot"></span><b>${STATUS[t.status] || t.status}</b><span>${fmtDT(t.at)}${t.by && isAdmin ? " · " + esc(t.by) : ""}</span></li>`).join("") || '<li><span class="dot"></span><b>Draft</b><span>Not submitted yet</span></li>'}</ul>
         </div>
       </aside>
     </div>`;
+
+  // Scorecard (admin + reviewer)
+  root.querySelectorAll("[data-score]").forEach(s => s.addEventListener("change", () => {
+    mine.scores[s.dataset.score] = s.value ? +s.value : "";
+    root.querySelector("#scoreTotal").textContent = `${scoreTotal(mine.scores)} / ${MAX}`;
+  }));
+  root.querySelector("#saveCard").addEventListener("click", async e => {
+    e.target.disabled = true;
+    const card = { scores: mine.scores, recommendation: root.querySelector("#rec").value, comment: root.querySelector("#comment").value.trim(), by: user.name || user.email };
+    try { await store.saveScore(uid, user.uid, card); root.querySelector("#cardState").textContent = "Saved just now"; toast("Scorecard saved"); }
+    catch (err) { toast(friendlyError(err)); }
+    e.target.disabled = false;
+  });
+
+  if (!isAdmin) return;
 
   root.querySelector("#saveStatus").addEventListener("click", async e => {
     const btn = e.target; btn.disabled = true;
     const status = root.querySelector("#newStatus").value;
     const adminNote = root.querySelector("#adminNote").value.trim();
     const patch = { adminNote };
-    if (status !== a.status) {
+    const changed = status !== a.status;
+    if (changed) {
       patch.status = status;
       patch.timeline = [...(a.timeline || []), { status, at: new Date().toISOString(), by: user.email }];
     }
-    try { await store.updateApplication(uid, patch); Object.assign(a, patch); toast("Saved"); renderDetail(uid); }
-    catch (err) { toast(friendlyError(err)); btn.disabled = false; }
+    try {
+      await store.updateApplication(uid, patch);
+      Object.assign(a, patch);
+      const mail = root.querySelector("#sendMail")?.checked && (changed || adminNote);
+      if (mail) toast((await mailStatus(a, a.status, adminNote)) ? "Saved and emailed applicant" : "Saved, but the email failed to send");
+      else toast("Saved");
+      renderDetail(uid);
+    } catch (err) { toast(friendlyError(err)); btn.disabled = false; }
   });
 
-  root.querySelectorAll("[data-score]").forEach(s => s.addEventListener("change", async () => {
-    review.scores[s.dataset.score] = s.value ? +s.value : "";
-    root.querySelector("#scoreTotal").textContent = `${CRITERIA.reduce((t, [k]) => t + (+review.scores[k] || 0), 0)} / ${CRITERIA.length * 5}`;
-    try { await store.saveReview(uid, review); } catch (err) { toast(friendlyError(err)); }
+  root.querySelectorAll("[data-assign]").forEach(cb => cb.addEventListener("change", async () => {
+    const next = [...root.querySelectorAll("[data-assign]:checked")].map(x => x.dataset.assign);
+    try { await store.updateApplication(uid, { assignedTo: next }); a.assignedTo = next; toast("Reviewers updated"); }
+    catch (err) { cb.checked = !cb.checked; toast(friendlyError(err)); }
   }));
 
   root.querySelector("#addNote").addEventListener("click", async () => {
@@ -234,4 +315,38 @@ async function renderDetail(uid) {
     try { await store.saveReview(uid, review); toast("Note added"); renderDetail(uid); }
     catch (err) { review.notes.pop(); toast(friendlyError(err)); }
   });
+}
+
+// ── Reviewer management (admin) ───────────────────────────────
+function renderTeam() {
+  const load = uid => apps.filter(a => (a.assignedTo || []).includes(uid)).length;
+  root.innerHTML = `
+    <p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Reviewers</h1></div></div>
+    <div class="admin-grid">
+      <section class="table-wrap">
+        ${reviewers.length ? `<table class="data" style="min-width:520px"><thead><tr><th>Name</th><th>Email</th><th>Assigned</th><th></th></tr></thead><tbody>
+          ${reviewers.map(r => `<tr style="cursor:default"><td><b>${esc(r.name)}</b></td><td>${esc(r.email || "")}</td><td>${load(r.uid)}</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" data-rm="${esc(r.uid)}">Remove</button></td></tr>`).join("")}
+        </tbody></table>` : `<div class="empty">No reviewers yet. Add your first reviewer using the form.</div>`}
+      </section>
+      <aside class="panel">
+        <h2 style="font-size:1.05rem">Add a reviewer</h2>
+        <p class="small muted">Ask the reviewer to create an account on the portal, then open <b>${esc(location.host)}/admin.html</b>. It will show their user ID. Paste it below.</p>
+        <div class="field"><label for="rUid">User ID</label><input id="rUid" type="text"></div>
+        <div class="field"><label for="rName">Name</label><input id="rName" type="text"></div>
+        <div class="field"><label for="rEmail">Email</label><input id="rEmail" type="email"></div>
+        <button class="btn btn-primary" style="width:100%" id="addRev">Add reviewer</button>
+      </aside>
+    </div>`;
+  root.querySelector("#addRev").addEventListener("click", async () => {
+    const uid = root.querySelector("#rUid").value.trim(), name = root.querySelector("#rName").value.trim(), email = root.querySelector("#rEmail").value.trim();
+    if (!uid || !name) { toast("User ID and name are required"); return; }
+    try { await store.addReviewer(uid, { name, email }); reviewers = await store.listReviewers(); toast("Reviewer added"); renderTeam(); }
+    catch (err) { toast(friendlyError(err)); }
+  });
+  root.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", async () => {
+    if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Click again to remove"; return; }
+    try { await store.removeReviewer(b.dataset.rm); reviewers = await store.listReviewers(); toast("Reviewer removed"); renderTeam(); }
+    catch (err) { toast(friendlyError(err)); }
+  }));
 }
