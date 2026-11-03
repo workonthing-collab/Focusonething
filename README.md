@@ -25,7 +25,7 @@ Until Firebase is configured in `assets/js/config.js`, the portal runs in **demo
    **Authentication → Settings → Authorized domains** → add `srujanfundsupport.in` and `www.srujanfundsupport.in`.
 4. **Firestore Database → Create database** → production mode → region **asia-south1 (Mumbai)**.
    Open the **Rules** tab → paste the contents of `firestore.rules` → Publish.
-5. **Storage → Get started** (needs the Blaze pay-as-you-go plan; the free usage tier still applies) → same region → **Rules** tab → paste `storage.rules` → Publish.
+5. *(Not used — free plan.)* Documents are shared as Google Drive/Dropbox links, so Firebase Storage and the Blaze plan aren't needed. `storage.rules` is kept in case you switch to direct uploads later.
 6. **Make yourself admin:** sign up on the portal with your admin email → open `admin.html` (it shows your user ID) → Firestore → **Start collection** `admins` → Document ID = that user ID → add any field (e.g. `email`) → Save. Reload `admin.html`.
 7. **Add reviewers (optional):** reviewer signs up on the portal → opens `admin.html` and sends you the user ID it shows → you open `admin.html#team` (or the **Reviewers** button) → add ID, name, email. Then tick reviewers on any application to assign it.
 8. Edit `site.email` and `site.adminEmail` in `assets/js/config.js` to your real support email.

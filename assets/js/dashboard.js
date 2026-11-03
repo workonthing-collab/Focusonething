@@ -98,17 +98,16 @@ function fieldHTML(f) {
   return `<div class="field" data-field="${f.k}"><label for="f-${f.k}">${esc(f.label)}${req}</label>${input}${f.hint ? `<p class="hint">${esc(f.hint)}</p>` : ""}<p class="err"></p></div>`;
 }
 
+const isLink = v => /^https?:\/\/\S+\.\S+/.test(v || "");
+
 function docHTML(d) {
-  const file = app.docs[d.k];
-  return `<div class="upload${file ? " has-file" : ""}" data-doc="${d.k}">
-    <div>
-      <b>${esc(d.label)}${d.req ? ' <span style="color:var(--danger)">*</span>' : ""}</b>
-      ${file ? `<span class="file-name">${file.url ? `<a href="${esc(file.url)}" target="_blank" rel="noopener">${esc(file.name)}</a>` : esc(file.name)} · ${(file.size / 1024 / 1024).toFixed(2)} MB</span>` : `<span class="small muted">${esc(d.hint || "PDF, image or Office file")} · max ${site.maxUploadMB} MB</span>`}
-    </div>
-    <div style="display:flex;gap:8px">
-      ${file ? `<button type="button" class="btn btn-ghost btn-sm" data-remove="${d.k}">Remove</button>` : ""}
-      <label class="btn btn-outline btn-sm" style="margin:0">${file ? "Replace" : "Upload"}<input type="file" accept="${ACCEPT}" data-file="${d.k}"></label>
-    </div>
+  const doc = app.docs[d.k];
+  const url = doc?.url || "";
+  return `<div class="upload${url ? " has-file" : ""}" data-doc="${d.k}" style="display:block">
+    <label for="doc-${d.k}" style="margin-bottom:4px">${esc(d.label)}${d.req ? ' <span class="req">*</span>' : ""}</label>
+    <input id="doc-${d.k}" type="url" data-link="${d.k}" value="${esc(url)}" placeholder="https://drive.google.com/...">
+    <p class="hint">${esc(d.hint ? d.hint + " · " : "")}${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">Open link</a> to check it works` : "Paste a Google Drive / Dropbox / OneDrive link"}</p>
+    <p class="err" style="color:var(--danger);font-size:.8rem;margin:4px 0 0;display:none">Paste a full link starting with https://</p>
   </div>`;
 }
 
@@ -136,7 +135,7 @@ function renderForm() {
       <section class="panel">
         <h2>${esc(s.title)}</h2>
         ${s.id === "review" ? reviewHTML() : `
-          ${s.id === "documents" ? `<p class="muted small">Upload clear, readable copies. Files marked * are required.</p>${s.docs.map(docHTML).join("")}<div style="height:8px"></div>` : ""}
+          ${s.id === "documents" ? `<div class="alert alert-info"><b>How to share documents:</b> upload each file to Google Drive (or Dropbox/OneDrive) → <b>Share</b> → set access to <b>"Anyone with the link can view"</b> → copy the link and paste it below. Links marked * are required.</div>${s.docs.map(docHTML).join("")}<div style="height:8px"></div>` : ""}
           ${(s.fields || []).map(f => f.row ? `<div class="field-row">${f.row.map(fieldHTML).join("")}</div>` : fieldHTML(f)).join("")}
         `}
         <div class="panel-actions">
@@ -173,7 +172,14 @@ function bindForm() {
   }));
   root.querySelector("#saveBtn")?.addEventListener("click", () => save());
   root.querySelector("#submitBtn")?.addEventListener("click", submit);
-  root.querySelectorAll("[data-file]").forEach(inp => inp.addEventListener("change", () => upload(inp.dataset.file, inp.files[0])));
+  root.querySelectorAll("[data-link]").forEach(inp => inp.addEventListener("input", () => {
+    const v = inp.value.trim(), box = inp.closest(".upload");
+    if (v) app.docs[inp.dataset.link] = { url: v, name: v, addedAt: new Date().toISOString() };
+    else delete app.docs[inp.dataset.link];
+    box.classList.toggle("has-file", isLink(v));
+    box.style.borderColor = ""; box.querySelector(".err").style.display = "none";
+    queueSave();
+  }));
   root.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", () => {
     delete app.docs[b.dataset.remove]; queueSave(); renderForm();
   }));
@@ -204,6 +210,12 @@ function validateStep(s) {
     if (msg) ok = false;
   }
   for (const d of s.docs || []) {
+    const u = app.docs[d.k]?.url;
+    if (u && !isLink(u)) {
+      ok = false;
+      const box = root.querySelector(`[data-doc="${d.k}"]`);
+      if (box) { box.style.setProperty("border-color", "var(--danger)"); box.querySelector(".err").style.display = "block"; }
+    }
     if (d.req && !app.docs[d.k]) {
       ok = false;
       root.querySelector(`[data-doc="${d.k}"]`)?.style.setProperty("border-color", "var(--danger)");
@@ -368,19 +380,19 @@ async function renderFunding() {
       </div>
       <div class="field"><label for="pAmt">Amount utilised (₹)</label><input id="pAmt" type="number" min="0"></div>
       <div class="field"><label for="pText">What did you achieve, and how were funds used? <span class="req">*</span></label><textarea id="pText" maxlength="2000"></textarea></div>
-      <div class="field"><label for="pFile">Attachment (utilisation certificate, photos, report)</label><input id="pFile" type="file" accept="${ACCEPT}"></div>
+      <div class="field"><label for="pLink">Link to attachment (utilisation certificate, photos, report)</label><input id="pLink" type="url" placeholder="https://drive.google.com/..."><p class="hint">Optional. Share as "Anyone with the link can view".</p></div>
       <button class="btn btn-primary btn-sm" id="pSubmit">Submit report</button>
     </div>`;
 
   box.querySelector("#pSubmit").addEventListener("click", async e => {
     const title = box.querySelector("#pTitle").value.trim(), text = box.querySelector("#pText").value.trim();
     if (!title || !text) { toast("Add a title and description"); return; }
-    const file = box.querySelector("#pFile").files[0];
-    if (file && file.size > site.maxUploadMB * 1024 * 1024) { toast(`File is larger than ${site.maxUploadMB} MB`); return; }
+    const link = box.querySelector("#pLink").value.trim();
+    if (link && !isLink(link)) { toast("Attachment link must start with https://"); return; }
     e.target.disabled = true; e.target.textContent = "Submitting…";
     try {
       const report = { title, text, tranche: box.querySelector("#pTr").value, amountUsed: box.querySelector("#pAmt").value, at: new Date().toISOString() };
-      if (file) report.file = await store.uploadDocument(user.uid, "report_" + Date.now(), file, "progress");
+      if (link) report.file = { url: link, name: "Open attachment" };
       progress.reports.push(report);
       await store.saveProgress(user.uid, progress);
       toast("Report submitted");
