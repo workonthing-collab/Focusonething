@@ -56,6 +56,7 @@ async function load() {
 function route() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("team") && role === "admin") return renderTeam();
+  if (h.has("reports") && role === "admin") return renderReports();
   const id = h.get("app");
   id ? renderDetail(id) : renderList();
 }
@@ -88,7 +89,7 @@ function renderList() {
     <div class="dash-head">
       <div><p class="small muted" style="margin:0 0 4px">${role === "admin" ? "Admin console" : "Reviewer console"}</p><h1>${role === "admin" ? "Applications" : "Assigned to you"}</h1></div>
       <div style="display:flex;gap:8px">
-        ${role === "admin" ? `<a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
+        ${role === "admin" ? `<a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
         <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
         ${role === "admin" ? `<button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button>` : ""}
       </div>
@@ -185,6 +186,8 @@ async function renderDetail(uid) {
     [review, cards] = await Promise.all([isAdmin ? store.getReview(uid) : Promise.resolve({ notes: [] }), store.getScores(uid, role, user.uid)]);
   } catch (e) { toast(friendlyError(e)); }
   review.notes ||= [];
+  let progress = { reports: [] };
+  if (isAdmin && a.status === "selected") { try { progress = await store.getProgress(uid); } catch {} }
   const mine = cards[user.uid] || { scores: {}, comment: "", recommendation: "" };
   mine.scores ||= {};
 
@@ -218,7 +221,10 @@ async function renderDetail(uid) {
       ${badge(a.status)}
     </div>
     <div class="admin-grid">
-      <section class="panel">${groups}</section>
+      <section>
+        ${isAdmin && a.status === "selected" ? fundingHTML(a, progress) : ""}
+        <div class="panel">${groups}</div>
+      </section>
       <aside class="admin-side">
         ${isAdmin ? `
         <div class="panel">
@@ -281,6 +287,7 @@ async function renderDetail(uid) {
   });
 
   if (!isAdmin) return;
+  if (a.status === "selected") bindFunding(a, uid);
 
   root.querySelector("#saveStatus").addEventListener("click", async e => {
     const btn = e.target; btn.disabled = true;
@@ -349,4 +356,113 @@ function renderTeam() {
     try { await store.removeReviewer(b.dataset.rm); reviewers = await store.listReviewers(); toast("Reviewer removed"); renderTeam(); }
     catch (err) { toast(friendlyError(err)); }
   }));
+}
+
+// ── Funding & tranches (admin, selected applications) ─────────
+const TR_STATUS = { planned: "Planned", due: "Due", released: "Released", on_hold: "On hold" };
+
+function fundingHTML(a, progress) {
+  const f = a.funding || {};
+  const tr = f.tranches?.length ? f.tranches : [{ label: "Tranche 1", amount: "", milestone: "", status: "planned" }];
+  const released = tr.filter(t => t.status === "released").reduce((x, t) => x + (+t.amount || 0), 0);
+  const planned = tr.reduce((x, t) => x + (+t.amount || 0), 0);
+  const reports = progress.reports || [];
+  return `<div class="panel" style="margin-bottom:24px">
+    <h2 style="font-size:1.1rem">Funding &amp; tranches</h2>
+    <div class="field-row">
+      <div class="field"><label for="fSanc">Sanctioned amount (₹)</label><input id="fSanc" type="number" min="0" value="${esc(f.sanctioned ?? D(a).amountAsked ?? "")}"></div>
+      <div class="field"><label for="fInst">Instrument</label><select id="fInst">${["Seed grant", "Equity investment", "Convertible note / debenture", "Debt", "Mentorship & services only"].map(o => `<option${(f.instrument || D(a).supportType) === o ? " selected" : ""}>${o}</option>`).join("")}</select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="fAgr">Agreement date</label><input id="fAgr" type="date" value="${esc(f.agreementDate || "")}"></div>
+      <div class="field"><label>Released so far</label><div style="padding:11px 0;font-weight:700">${money(released) || "₹0"} <span class="muted small" style="font-weight:400">of ${money(planned) || "₹0"} planned</span></div></div>
+    </div>
+    <div class="table-wrap" style="margin-bottom:12px"><table class="data" style="min-width:640px"><thead><tr><th>Tranche</th><th>Amount (₹)</th><th>Milestone / condition</th><th>Status</th><th>Released on</th><th>Ref. no.</th><th></th></tr></thead>
+      <tbody id="trBody">${tr.map((t, i) => trRow(t, i)).join("")}</tbody></table></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" id="addTr">+ Add tranche</button>
+      <button class="btn btn-primary btn-sm" id="saveFund">Save funding</button>
+    </div>
+    <p class="hint">The startup sees this on their dashboard, including the sanctioned amount, tranches, milestones, release dates and reference numbers.</p>
+    <h3 style="font-size:1rem;margin-top:22px">Progress &amp; utilisation reports from the startup</h3>
+    ${reports.length ? reports.slice().reverse().map(r => `<div class="note"><b>${esc(r.title || "Report")}</b>${r.tranche ? ` · ${esc(r.tranche)}` : ""}${r.amountUsed ? ` · ${esc(money(r.amountUsed))} utilised` : ""}<div style="margin-top:4px">${esc(r.text || "")}</div>${r.file ? `<div style="margin-top:4px">${r.file.url ? `<a href="${esc(r.file.url)}" target="_blank" rel="noopener">${esc(r.file.name)}</a>` : esc(r.file.name)}</div>` : ""}<div class="meta">${fmtDT(r.at)}</div></div>`).join("") : '<p class="small muted">No reports submitted yet.</p>'}
+  </div>`;
+}
+
+function trRow(t, i) {
+  return `<tr style="cursor:default" data-tr="${i}">
+    <td><input type="text" data-tf="label" value="${esc(t.label || "")}" style="min-width:110px"></td>
+    <td><input type="number" min="0" data-tf="amount" value="${esc(t.amount ?? "")}" style="min-width:110px"></td>
+    <td><input type="text" data-tf="milestone" value="${esc(t.milestone || "")}" style="min-width:160px"></td>
+    <td><select data-tf="status">${Object.entries(TR_STATUS).map(([k, l]) => `<option value="${k}"${t.status === k ? " selected" : ""}>${l}</option>`).join("")}</select></td>
+    <td><input type="date" data-tf="releasedOn" value="${esc(t.releasedOn || "")}"></td>
+    <td><input type="text" data-tf="reference" value="${esc(t.reference || "")}" placeholder="UTR / cheque no." style="min-width:110px"></td>
+    <td><button class="btn btn-ghost btn-sm" data-deltr="${i}">✕</button></td></tr>`;
+}
+
+function bindFunding(a, uid) {
+  const body = root.querySelector("#trBody");
+  const read = () => [...body.querySelectorAll("[data-tr]")].map(row => Object.fromEntries([...row.querySelectorAll("[data-tf]")].map(el => [el.dataset.tf, el.value.trim()])));
+  const redraw = list => { body.innerHTML = list.map((t, i) => trRow(t, i)).join(""); bindDel(); };
+  const bindDel = () => body.querySelectorAll("[data-deltr]").forEach(b => b.addEventListener("click", () => { const l = read(); l.splice(+b.dataset.deltr, 1); redraw(l); }));
+  bindDel();
+  root.querySelector("#addTr").addEventListener("click", () => { const l = read(); l.push({ label: `Tranche ${l.length + 1}`, amount: "", milestone: "", status: "planned" }); redraw(l); });
+  root.querySelector("#saveFund").addEventListener("click", async e => {
+    e.target.disabled = true;
+    const funding = {
+      sanctioned: root.querySelector("#fSanc").value, instrument: root.querySelector("#fInst").value,
+      agreementDate: root.querySelector("#fAgr").value,
+      tranches: read().filter(t => t.label || t.amount).map(t => ({ ...t, amount: t.amount === "" ? "" : +t.amount }))
+    };
+    try { await store.updateApplication(uid, { funding }); a.funding = funding; toast("Funding saved"); renderDetail(uid); }
+    catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
+  });
+}
+
+// ── Reports (admin) ───────────────────────────────────────────
+function bars(title, entries, fmtV = v => v) {
+  const max = Math.max(1, ...entries.map(e => e[1]));
+  return `<div class="panel"><h2 style="font-size:1.05rem">${title}</h2>
+    ${entries.length ? entries.map(([k, v]) => `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:.85rem;gap:8px"><span>${esc(k)}</span><b>${fmtV(v)}</b></div>
+      <div class="progress" style="margin:4px 0 0"><div style="width:${(v / max) * 100}%"></div></div></div>`).join("") : '<p class="small muted">No data yet.</p>'}</div>`;
+}
+
+function renderReports() {
+  const sub = apps.filter(a => a.status !== "draft");
+  const sel = sub.filter(a => a.status === "selected");
+  const sum = arr => arr.reduce((x, y) => x + (+y || 0), 0);
+  const totalAsk = sum(sub.map(a => D(a).amountAsked));
+  const sanctioned = sum(sel.map(a => a.funding?.sanctioned));
+  const released = sum(sel.flatMap(a => (a.funding?.tranches || []).filter(t => t.status === "released").map(t => t.amount)));
+  const group = key => Object.entries(sub.reduce((m, a) => { const k = D(a)[key] || "Not specified"; m[k] = (m[k] || 0) + 1; return m; }, {})).sort((x, y) => y[1] - x[1]);
+  const months = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    months.push([d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" }), sub.filter(a => (a.submittedAt || "").slice(0, 7) === key).length]);
+  }
+  const FUN = ["submitted", "under_review", "shortlisted", "selected"];
+  const furthest = a => Math.max(0, ...[a.status, ...(a.timeline || []).map(t => t.status)].map(x => FUN.indexOf(x)));
+  const funnel = FUN.map((st, i) => [STATUS[st], sub.filter(a => furthest(a) >= i).length]);
+  const kpi = (n, l) => `<div class="stat" style="cursor:default"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  const rate = sub.length ? Math.round(sel.length / sub.length * 100) + "%" : "—";
+
+  root.innerHTML = `
+    <p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Reports</h1></div>
+      <button class="btn btn-outline btn-sm" onclick="window.print()">Print / save PDF</button></div>
+    <div class="stats">
+      ${kpi(sub.length, "Applications submitted")}${kpi(sel.length, "Selected")}${kpi(rate, "Selection rate")}
+      ${kpi(money(totalAsk) || "₹0", "Total funding asked")}${kpi(money(sanctioned) || "₹0", "Sanctioned")}${kpi(money(released) || "₹0", "Released")}
+    </div>
+    <div class="grid-2" style="margin-bottom:20px">
+      ${bars("Selection funnel", funnel)}
+      ${bars("Submissions — last 12 months", months)}
+    </div>
+    <div class="grid-3">
+      ${bars("By sector", group("sector"))}
+      ${bars("By state", group("state"))}
+      ${bars("By stage", group("stage"))}
+    </div>`;
 }

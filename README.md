@@ -11,7 +11,7 @@ Static site (HTML/CSS/JS) hosted on GitHub Pages, with Firebase for login, datab
 | `index.html` | Public site: about, eligibility, process, documents, FAQs, contact |
 | `login.html` | Sign up / log in / forgot password |
 | `dashboard.html` | Applicant dashboard: application form, uploads, review & submit, status tracker |
-| `admin.html` | Staff console. **Admins:** filter/search applications, full detail with documents, change status, message/email applicant, assign reviewers, scorecards, private notes, CSV export, manage reviewers. **Reviewers:** only applications assigned to them, with their own scorecard |
+| `admin.html` | Staff console. **Admins:** filter/search applications, full detail with documents, change status, message/email applicant, assign reviewers, scorecards, private notes, CSV export, manage reviewers. **Reviewers:** only applications assigned to them, with their own scorecard. `admin.html#reports` has the reports dashboard |
 
 ## Demo mode
 
@@ -31,6 +31,10 @@ Until Firebase is configured in `assets/js/config.js`, the portal runs in **demo
 8. Edit `site.email` and `site.adminEmail` in `assets/js/config.js` to your real support email.
 
 The Firebase web config is safe to publish. Access is controlled by the security rules.
+
+## Funding & tranches
+
+When an application is set to **Selected**, its admin page shows a **Funding & tranches** panel: sanctioned amount, instrument, agreement date and a tranche schedule (amount, milestone, status, release date, reference no.). The startup sees all of this on their dashboard and can submit **progress / utilisation reports** with attachments, which appear back on the admin page.
 
 ## Email notifications (optional)
 
@@ -64,4 +68,4 @@ Applicants can edit only while in `draft`. After submission, only admins can cha
 - **Phase 1 (done):** public site, applicant signup, application, uploads, status
 - **Phase 2 (done):** admin console: list/filter applications, view documents, change status, notes, scoring, CSV export
 - **Phase 3 (done):** reviewer role, per-reviewer scorecards with average, reviewer assignment, email notifications
-- **Phase 4:** disbursement/tranche tracking, reports
+- **Phase 4 (done):** funding & tranche tracking for selected startups, progress/utilisation reports from startups, reports dashboard (funnel, monthly submissions, sector/state/stage, funding totals)

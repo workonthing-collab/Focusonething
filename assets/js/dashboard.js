@@ -317,6 +317,7 @@ function renderStatus() {
       <section class="panel">
         <div class="alert ${rejected ? "alert-error" : "alert-ok"}">${esc(note)}</div>
         ${app.adminNote ? `<div class="alert alert-info"><b>Message from the team:</b><br>${esc(app.adminNote)}</div>` : ""}
+        ${st === "selected" ? `<div id="fundingBox"><div class="spinner" style="margin:20px auto"></div></div>` : ""}
         <p class="small muted">Submitted on ${fmt(app.submittedAt)}. Your application is locked for review. For changes, email <a href="mailto:${esc(site.email)}">${esc(site.email)}</a> with your application ID.</p>
         <h2 style="margin-top:24px">Your submission</h2>
         ${STEPS.filter(s => s.id !== "review").map(s => `
@@ -326,4 +327,64 @@ function renderStatus() {
           </table></div>`).join("")}
       </section>
     </div>`;
+  if (st === "selected") renderFunding();
+}
+
+// ── Funding & progress reports (selected startups) ────────────
+const TR_LABEL = { planned: "Planned", due: "Due", released: "Released", on_hold: "On hold" };
+const TR_BADGE = { planned: "draft", due: "shortlisted", released: "selected", on_hold: "rejected" };
+
+async function renderFunding() {
+  const box = document.getElementById("fundingBox");
+  if (!box) return;
+  let progress = { reports: [] };
+  try { progress = await store.getProgress(user.uid); } catch {}
+  progress.reports ||= [];
+  const f = app.funding || {};
+  const tr = f.tranches || [];
+  const released = tr.filter(t => t.status === "released").reduce((x, t) => x + (+t.amount || 0), 0);
+
+  box.innerHTML = `
+    <h2 style="margin-top:8px">Funding</h2>
+    ${f.sanctioned ? `
+      <table class="summary-table" style="margin-bottom:14px">
+        <tr><th>Sanctioned amount</th><td><b>${esc(money(f.sanctioned))}</b></td></tr>
+        <tr><th>Instrument</th><td>${esc(f.instrument || "—")}</td></tr>
+        ${f.agreementDate ? `<tr><th>Agreement date</th><td>${esc(new Date(f.agreementDate).toLocaleDateString("en-IN"))}</td></tr>` : ""}
+        <tr><th>Released so far</th><td>${esc(money(released) || "₹0")}</td></tr>
+      </table>
+      ${tr.length ? `<div class="table-wrap" style="margin-bottom:22px"><table class="data" style="min-width:520px"><thead><tr><th>Tranche</th><th>Amount</th><th>Milestone</th><th>Status</th><th>Released on</th></tr></thead><tbody>
+        ${tr.map(t => `<tr style="cursor:default"><td><b>${esc(t.label)}</b></td><td>${esc(money(t.amount) || "—")}</td><td>${esc(t.milestone || "—")}</td><td><span class="badge badge-${TR_BADGE[t.status] || "draft"}">${TR_LABEL[t.status] || t.status}</span></td><td class="small">${t.releasedOn ? esc(new Date(t.releasedOn).toLocaleDateString("en-IN")) : "—"}${t.reference ? `<div class="muted">Ref: ${esc(t.reference)}</div>` : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : ""}`
+    : `<p class="muted small">Your funding details and tranche schedule will appear here once finalised.</p>`}
+
+    <h2>Progress &amp; utilisation reports</h2>
+    <p class="small muted">Share milestone progress and how released funds were used. Attach a utilisation certificate where required.</p>
+    ${progress.reports.slice().reverse().map(r => `<div class="note"><b>${esc(r.title)}</b>${r.tranche ? ` · ${esc(r.tranche)}` : ""}${r.amountUsed ? ` · ${esc(money(r.amountUsed))} utilised` : ""}<div style="margin-top:4px">${esc(r.text)}</div>${r.file ? `<div style="margin-top:4px">📎 ${r.file.url ? `<a href="${esc(r.file.url)}" target="_blank" rel="noopener">${esc(r.file.name)}</a>` : esc(r.file.name)}</div>` : ""}<div class="meta">${fmt(r.at)}</div></div>`).join("")}
+    <div class="card" style="margin-top:12px">
+      <div class="field-row">
+        <div class="field"><label for="pTitle">Report title <span class="req">*</span></label><input id="pTitle" type="text" placeholder="e.g. Q1 progress, MVP launch"></div>
+        <div class="field"><label for="pTr">Related tranche</label><select id="pTr"><option value="">—</option>${tr.map(t => `<option>${esc(t.label)}</option>`).join("")}</select></div>
+      </div>
+      <div class="field"><label for="pAmt">Amount utilised (₹)</label><input id="pAmt" type="number" min="0"></div>
+      <div class="field"><label for="pText">What did you achieve, and how were funds used? <span class="req">*</span></label><textarea id="pText" maxlength="2000"></textarea></div>
+      <div class="field"><label for="pFile">Attachment (utilisation certificate, photos, report)</label><input id="pFile" type="file" accept="${ACCEPT}"></div>
+      <button class="btn btn-primary btn-sm" id="pSubmit">Submit report</button>
+    </div>`;
+
+  box.querySelector("#pSubmit").addEventListener("click", async e => {
+    const title = box.querySelector("#pTitle").value.trim(), text = box.querySelector("#pText").value.trim();
+    if (!title || !text) { toast("Add a title and description"); return; }
+    const file = box.querySelector("#pFile").files[0];
+    if (file && file.size > site.maxUploadMB * 1024 * 1024) { toast(`File is larger than ${site.maxUploadMB} MB`); return; }
+    e.target.disabled = true; e.target.textContent = "Submitting…";
+    try {
+      const report = { title, text, tranche: box.querySelector("#pTr").value, amountUsed: box.querySelector("#pAmt").value, at: new Date().toISOString() };
+      if (file) report.file = await store.uploadDocument(user.uid, "report_" + Date.now(), file, "progress");
+      progress.reports.push(report);
+      await store.saveProgress(user.uid, progress);
+      toast("Report submitted");
+      renderFunding();
+    } catch (err) { toast(friendlyError(err)); e.target.disabled = false; e.target.textContent = "Submit report"; }
+  });
 }

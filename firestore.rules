@@ -44,6 +44,13 @@ service cloud.firestore {
       }
     }
 
+    // Utilisation / progress reports from selected startups.
+    match /progress/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow write: if signedIn() && request.auth.uid == uid
+                   && get(/databases/$(database)/documents/applications/$(uid)).data.status == 'selected';
+    }
+
     match /reviewers/{uid} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow write: if isAdmin();

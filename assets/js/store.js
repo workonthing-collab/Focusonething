@@ -211,13 +211,27 @@ export const store = {
     await F.deleteDoc(F.doc(db, "reviewers", uid));
   },
 
+  // Progress / utilisation reports submitted by selected startups
+  async getProgress(uid) {
+    if (DEMO_MODE) return LS.get("sfs_progress_" + uid, { reports: [] });
+    const { db, F } = await loadFirebase();
+    const s = await F.getDoc(F.doc(db, "progress", uid));
+    return s.exists() ? s.data() : { reports: [] };
+  },
+
+  async saveProgress(uid, data) {
+    if (DEMO_MODE) { LS.set("sfs_progress_" + uid, data); return; }
+    const { db, F } = await loadFirebase();
+    await F.setDoc(F.doc(db, "progress", uid), data);
+  },
+
   // Returns { name, size, type, path, url, uploadedAt }
-  async uploadDocument(uid, key, file) {
+  async uploadDocument(uid, key, file, folder = "applications") {
     const meta = { name: file.name, size: file.size, type: file.type, uploadedAt: new Date().toISOString() };
     if (DEMO_MODE) return { ...meta, path: "", url: "" };
     const { storage, S } = await loadFirebase();
     const safe = file.name.replace(/[^\w.\-]+/g, "_");
-    const path = `applications/${uid}/${key}/${Date.now()}_${safe}`;
+    const path = `${folder}/${uid}/${key}/${Date.now()}_${safe}`;
     const r = S.ref(storage, path);
     await S.uploadBytes(r, file, { contentType: file.type });
     const url = await S.getDownloadURL(r);

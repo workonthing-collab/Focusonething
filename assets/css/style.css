@@ -286,3 +286,9 @@ table.data tbody tr:last-child td { border-bottom: 0; }
   .admin-grid { grid-template-columns: 1fr; }
   .admin-side { position: static; }
 }
+
+@media print {
+  .site-header, .demo-banner, .btn, .toast { display: none !important; }
+  body { background: #fff; }
+  .panel, .stat { break-inside: avoid; }
+}

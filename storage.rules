@@ -18,5 +18,13 @@ service firebase.storage {
                     && request.resource.size < 10 * 1024 * 1024;
       allow update, delete: if false;
     }
+
+    // progress/{uid}/{reportKey}/{file} — utilisation reports from selected startups
+    match /progress/{uid}/{reportKey}/{fileName} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && request.resource.size < 10 * 1024 * 1024;
+      allow update, delete: if false;
+    }
   }
 }
