@@ -6,12 +6,12 @@
 //    data is saved only in the visitor's own browser (nothing is sent anywhere).
 
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyC_db-CwPiPIedQyaEjXJBX9VUzlvKX7hk",
+  authDomain: "srujan-fund-support.firebaseapp.com",
+  projectId: "srujan-fund-support",
+  storageBucket: "srujan-fund-support.firebasestorage.app",
+  messagingSenderId: "520723964156",
+  appId: "1:520723964156:web:bab77274025925ad863779"
 };
 
 export const site = {
