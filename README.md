@@ -1,6 +1,6 @@
 # Srujan Fund Support — Applicant Portal
 
-Startup application portal for **srujanfundsupport.in**. Founders sign up, fill a 5-step application, upload documents, submit, and track status.
+Startup status portal for **srujanfundsupport.in**. **Admins add each startup** (company, founder, founder email, status). **Founders** sign up with that same email, verify it, and see their status, messages from the team, and funding/tranches. Founders can't edit anything.
 
 Static site (HTML/CSS/JS) hosted on GitHub Pages, with Firebase for login, database and file storage.
 

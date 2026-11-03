@@ -13,42 +13,31 @@ service cloud.firestore {
     function assignedTo(appId) {
       return get(/databases/$(database)/documents/applications/$(appId)).data.get('assignedTo', []);
     }
+    // A founder sees a record only if it was created for their email AND they have verified that email.
+    function isFounderOf(data) {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == data.founderEmail;
+    }
 
-    match /applications/{uid} {
-      // Applicant reads own; admins read all; reviewers read only applications assigned to them.
-      allow read: if (signedIn() && request.auth.uid == uid)
-                  || isAdmin()
+    // Startup records — created and edited by admins only. Founders can only read their own.
+    match /applications/{appId} {
+      allow read: if isAdmin()
+                  || isFounderOf(resource.data)
                   || (isReviewer() && request.auth.uid in resource.data.get('assignedTo', []));
-
-      // Applicant can create/edit only while it's a draft, and can only move it to "submitted".
-      allow create: if signedIn() && request.auth.uid == uid
-                    && request.resource.data.status in ['draft', 'submitted'];
-      allow update: if signedIn() && request.auth.uid == uid
-                    && resource.data.status == 'draft'
-                    && request.resource.data.status in ['draft', 'submitted'];
-
-      // Admins can change status, notes and reviewer assignment.
-      allow update: if isAdmin();
+      allow create, update: if isAdmin();
       allow delete: if false;
     }
 
-    // Private admin notes — admins only.
+    // Private admin notes and reviewer scorecards — never visible to founders.
     match /reviews/{appId} {
       allow read, write: if isAdmin();
 
-      // One scorecard per scorer. Scorer writes their own; admins read all.
       match /scores/{scorer} {
         allow read: if isAdmin() || (signedIn() && request.auth.uid == scorer);
         allow write: if signedIn() && request.auth.uid == scorer
                      && (isAdmin() || (isReviewer() && request.auth.uid in assignedTo(appId)));
       }
-    }
-
-    // Utilisation / progress reports from selected startups.
-    match /progress/{uid} {
-      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
-      allow write: if signedIn() && request.auth.uid == uid
-                   && get(/databases/$(database)/documents/applications/$(uid)).data.status == 'selected';
     }
 
     match /reviewers/{uid} {

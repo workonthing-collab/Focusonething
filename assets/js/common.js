@@ -37,8 +37,8 @@ function initAuthNav() {
   if (!slot) return;
   store.onUser(u => {
     slot.innerHTML = u
-      ? `<a class="btn btn-primary btn-sm" href="dashboard.html">My application</a>`
-      : `<a class="btn btn-outline btn-sm" href="login.html">Log in</a> <a class="btn btn-primary btn-sm" href="login.html?mode=signup">Apply now</a>`;
+      ? `<a class="btn btn-primary btn-sm" href="dashboard.html">My dashboard</a>`
+      : `<a class="btn btn-primary btn-sm" href="login.html">Log in</a>`;
   });
 }
 

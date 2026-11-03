@@ -41,7 +41,9 @@ export function friendlyError(e) {
     "auth/wrong-password": "Email or password is incorrect.",
     "auth/user-not-found": "No account found with this email.",
     "auth/too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
-    "auth/network-request-failed": "Network error. Check your internet connection."
+    "auth/network-request-failed": "Network error. Check your internet connection.",
+    "permission-denied": "You don't have access to this. Please log in again or contact support.",
+    "insufficient permissions": "You don't have access to this. Please log in again or contact support."
   };
   for (const k in map) if (code.includes(k)) return map[k];
   return e?.friendly || "Something went wrong. Please try again.";
@@ -91,6 +93,49 @@ export const store = {
     }
     const { auth, A } = await loadFirebase();
     await A.signInWithEmailAndPassword(auth, email, password);
+  },
+
+  async resendVerification() {
+    if (DEMO_MODE) return;
+    const { auth, A } = await loadFirebase();
+    if (auth.currentUser) await A.sendEmailVerification(auth.currentUser);
+  },
+
+  // Reloads the signed-in user (e.g. after they click the verification link). Returns fresh user or null.
+  async refreshUser() {
+    if (DEMO_MODE) return demoCurrent();
+    const { auth } = await loadFirebase();
+    const u = auth.currentUser;
+    if (!u) return null;
+    await u.reload();
+    await u.getIdToken(true);
+    return { uid: u.uid, email: u.email, name: u.displayName || "", verified: u.emailVerified };
+  },
+
+  // Founder: records the admin created for this email.
+  async getMyApplications(email) {
+    email = (email || "").trim().toLowerCase();
+    if (DEMO_MODE) {
+      const out = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k.startsWith("sfs_app_")) { const a = LS.get(k, {}); if (a.founderEmail === email) out.push({ uid: k.slice(8), ...a }); }
+      }
+      return out;
+    }
+    const { db, F } = await loadFirebase();
+    const snap = await F.getDocs(F.query(F.collection(db, "applications"), F.where("founderEmail", "==", email)));
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  },
+
+  // Admin: create a new startup record. Returns its id.
+  async createApplication(rec) {
+    const now = new Date().toISOString();
+    const r = { ...rec, createdAt: now, updatedAt: now };
+    if (DEMO_MODE) { const id = "rec_" + Math.random().toString(36).slice(2, 10); LS.set("sfs_app_" + id, r); return id; }
+    const { db, F } = await loadFirebase();
+    const ref = await F.addDoc(F.collection(db, "applications"), r);
+    return ref.id;
   },
 
   async resetPassword(email) {

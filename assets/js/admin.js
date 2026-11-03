@@ -6,7 +6,22 @@ import { mailStatus, mailEnabled } from "./mail.js";
 import { STEPS, STATUS, STATES, SECTORS, flatFields, MONEY, money } from "./schema.js";
 
 const root = document.getElementById("root");
-const ORDER = ["submitted", "under_review", "shortlisted", "selected", "rejected", "draft"];
+const ORDER = ["submitted", "under_review", "shortlisted", "selected", "rejected"];
+const STAGES = ["Idea", "Prototype / MVP", "Early revenue", "Scaling"];
+// Fields the admin enters for each startup record.
+const REC = [
+  { k: "companyName", label: "Registered company name", req: true },
+  { k: "brandName", label: "Brand / product name" },
+  { k: "founderName", label: "Founder name", req: true },
+  { k: "founderEmail", label: "Founder email (they log in with this)", type: "email", req: true },
+  { k: "founderPhone", label: "Founder mobile", type: "tel" },
+  { k: "sector", label: "Sector", type: "select", options: SECTORS },
+  { k: "stage", label: "Stage", type: "select", options: STAGES },
+  { k: "state", label: "State", type: "select", options: STATES },
+  { k: "city", label: "City" },
+  { k: "amountAsked", label: "Amount requested (₹)", type: "number" },
+  { k: "oneLiner", label: "One-line description" }
+];
 const CRITERIA = [
   ["team", "Team & founder fit"], ["problem", "Problem clarity"], ["solution", "Solution & innovation"],
   ["market", "Market size"], ["model", "Business model"], ["traction", "Traction"]
@@ -37,7 +52,7 @@ store.onUser(async u => {
       <h2>Staff access required</h2>
       <p class="muted">This account (${esc(u.email)}) is not an admin or reviewer. Send the user ID below to the portal admin to get access.</p>
       <p class="small muted">Your user ID: <code>${esc(u.uid)}</code></p>
-      <a class="btn btn-outline" href="dashboard.html">Go to applicant dashboard</a></div>`;
+      <a class="btn btn-outline" href="dashboard.html">Go to founder dashboard</a></div>`;
     return;
   }
   await load();
@@ -57,6 +72,8 @@ function route() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("team") && role === "admin") return renderTeam();
   if (h.has("reports") && role === "admin") return renderReports();
+  if (h.has("new") && role === "admin") return renderEdit(null);
+  if (h.get("edit") && role === "admin") return renderEdit(h.get("edit"));
   const id = h.get("app");
   id ? renderDetail(id) : renderList();
 }
@@ -65,7 +82,7 @@ function route() {
 function filtered() {
   const q = filt.q.trim().toLowerCase();
   return apps.filter(a => {
-    if (filt.status ? a.status !== filt.status : a.status === "draft") return false;
+    if (filt.status && a.status !== filt.status) return false;
     if (filt.sector && D(a).sector !== filt.sector) return false;
     if (filt.state && D(a).state !== filt.state) return false;
     if (q) {
@@ -82,25 +99,25 @@ function filtered() {
 
 function renderList() {
   const counts = Object.fromEntries(ORDER.map(s => [s, apps.filter(a => a.status === s).length]));
-  const total = apps.length - counts.draft;
+  const total = apps.length;
   const sel = (id, label, opts, cur) => `<select id="${id}"><option value="">${label}</option>${opts.map(o => `<option value="${esc(o[0] ?? o)}"${(o[0] ?? o) === cur ? " selected" : ""}>${esc(o[1] ?? o)}</option>`).join("")}</select>`;
 
   root.innerHTML = `
     <div class="dash-head">
       <div><p class="small muted" style="margin:0 0 4px">${role === "admin" ? "Admin console" : "Reviewer console"}</p><h1>${role === "admin" ? "Applications" : "Assigned to you"}</h1></div>
       <div style="display:flex;gap:8px">
-        ${role === "admin" ? `<a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
+        ${role === "admin" ? `<a class="btn btn-primary btn-sm" href="#new">+ Add startup</a><a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
         <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
         ${role === "admin" ? `<button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button>` : ""}
       </div>
     </div>
     <div class="stats">
-      <button class="stat${!filt.status ? " active" : ""}" data-st=""><div class="n">${total}</div><div class="l">All submitted</div></button>
-      ${["under_review", "shortlisted", "selected", "rejected", ...(role === "admin" ? ["draft"] : [])].map(s => `<button class="stat${filt.status === s ? " active" : ""}" data-st="${s}"><div class="n">${counts[s]}</div><div class="l">${s === "draft" ? "Drafts (not submitted)" : STATUS[s]}</div></button>`).join("")}
+      <button class="stat${!filt.status ? " active" : ""}" data-st=""><div class="n">${total}</div><div class="l">All startups</div></button>
+      ${["submitted", "under_review", "shortlisted", "selected", "rejected"].map(s => `<button class="stat${filt.status === s ? " active" : ""}" data-st="${s}"><div class="n">${counts[s]}</div><div class="l">${s === "submitted" ? "New" : STATUS[s]}</div></button>`).join("")}
     </div>
     <div class="filters">
       <input id="q" type="text" placeholder="Search company, founder, email, ID…" value="${esc(filt.q)}">
-      ${sel("fStatus", "Submitted (all)", ORDER.map(s => [s, STATUS[s]]), filt.status)}
+      ${sel("fStatus", "All statuses", ORDER.map(s => [s, STATUS[s]]), filt.status)}
       ${sel("fSector", "All sectors", SECTORS, filt.sector)}
       ${sel("fState", "All states", STATES, filt.state)}
       <button class="btn btn-ghost btn-sm" id="clearBtn">Clear</button>
@@ -144,13 +161,14 @@ function drawTable() {
 function exportCSV() {
   const rows = filtered();
   if (!rows.length) { toast("Nothing to export"); return; }
-  const fields = STEPS.flatMap(s => flatFields(s));
-  const docKeys = STEPS.flatMap(s => s.docs || []);
-  const head = ["Application ID", "Status", "Submitted at", ...fields.map(f => f.label), ...docKeys.map(d => d.label)];
+  const fields = REC;
+  const docKeys = [];
+  const head = ["Application ID", "Status", "Applied on", ...fields.map(f => f.label), "Sanctioned (₹)", "Released (₹)"];
   const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [head.map(cell).join(",")].concat(rows.map(a => [
     a.applicationId, STATUS[a.status] || a.status, a.submittedAt ? fmtDT(a.submittedAt) : "",
-    ...fields.map(f => D(a)[f.k]), ...docKeys.map(d => a.docs?.[d.k]?.url || a.docs?.[d.k]?.name || "")
+    ...fields.map(f => D(a)[f.k]), a.funding?.sanctioned || "",
+    (a.funding?.tranches || []).filter(t => t.status === "released").reduce((x, t) => x + (+t.amount || 0), 0) || ""
   ].map(cell).join(",")));
   const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
@@ -187,22 +205,18 @@ async function renderDetail(uid) {
   } catch (e) { toast(friendlyError(e)); }
   review.notes ||= [];
   let progress = { reports: [] };
-  if (isAdmin && a.status === "selected") { try { progress = await store.getProgress(uid); } catch {} }
   const mine = cards[user.uid] || { scores: {}, comment: "", recommendation: "" };
   mine.scores ||= {};
 
-  const groups = STEPS.filter(s => s.id !== "review").map(s => {
-    const docs = (s.docs || []).map(d => {
-      const f = a.docs?.[d.k];
-      return `<tr><th>${esc(d.label)}</th><td>${f ? (f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>` : `${esc(f.name)} <span class="small muted">(demo — no file stored)</span>`) : '<span class="muted">Not uploaded</span>'}</td></tr>`;
-    }).join("");
-    const fields = flatFields(s).map(f => {
-      const v = MONEY.has(f.k) ? money(D(a)[f.k]) : D(a)[f.k];
-      const shown = f.type === "url" && v ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v);
-      return `<tr><th>${esc(f.label)}</th><td>${shown || '<span class="muted">—</span>'}</td></tr>`;
-    }).join("");
-    return `<div class="summary-group"><h3>${esc(s.title)}</h3><table class="summary-table">${docs}${fields}</table></div>`;
-  }).join("");
+  const groups = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:1.1rem;margin:0">Startup details</h2>${isAdmin ? `<a class="btn btn-outline btn-sm" href="#edit=${encodeURIComponent(uid)}">Edit details</a>` : ""}</div>
+    <table class="summary-table" style="margin-top:12px">
+      <tr><th>Application ID</th><td>${esc(a.applicationId || "—")}</td></tr>
+      <tr><th>Applied on</th><td>${esc(fmtDate(a.submittedAt))}</td></tr>
+      ${REC.map(f => { const v = MONEY.has(f.k) ? money(D(a)[f.k]) : D(a)[f.k]; return `<tr><th>${esc(f.label)}</th><td>${esc(v) || '<span class="muted">—</span>'}</td></tr>`; }).join("")}
+    </table>
+    ${Object.keys(a.docs || {}).length ? `<h3 style="font-size:.95rem;margin-top:18px">Documents</h3><table class="summary-table">${Object.entries(a.docs).map(([k, f]) => `<tr><th>${esc(k)}</th><td>${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>` : esc(f.name)}</td></tr>`).join("")}</table>` : ""}
+    <h3 style="font-size:.95rem;margin-top:22px">Messages sent to founder</h3>
+    ${(a.messages || []).length ? a.messages.slice().reverse().map(m => `<div class="note">${esc(m.text)}<div class="meta">${esc(m.by || "")} · ${fmtDT(m.at)}</div></div>`).join("") : '<p class="small muted">None yet. Use "Update status" to send one.</p>'}`;
 
   // Other scorers' cards (admin only)
   const others = Object.entries(cards).filter(([k]) => k !== user.uid);
@@ -230,13 +244,13 @@ async function renderDetail(uid) {
         <div class="panel">
           <h2 style="font-size:1.05rem">Update status</h2>
           <div class="field"><label for="newStatus">Status</label>
-            <select id="newStatus">${ORDER.map(s => `<option value="${s}"${s === a.status ? " selected" : ""}>${s === "draft" ? "Draft (reopen for applicant edits)" : STATUS[s]}</option>`).join("")}</select></div>
-          <div class="field"><label for="adminNote">Message to applicant</label>
-            <textarea id="adminNote" style="min-height:90px" placeholder="Shown on the applicant's dashboard">${esc(a.adminNote || "")}</textarea>
-            <p class="hint">Visible to the applicant. Leave blank for none.</p></div>
+            <select id="newStatus">${ORDER.map(s => `<option value="${s}"${s === a.status ? " selected" : ""}>${STATUS[s]}</option>`).join("")}</select></div>
+          <div class="field"><label for="adminNote">New message to founder</label>
+            <textarea id="adminNote" style="min-height:90px" placeholder="Shown on the founder's dashboard"></textarea>
+            <p class="hint">Optional. Added to the founder's message list.</p></div>
           <div class="field" style="display:flex;gap:8px;align-items:flex-start">
             <input type="checkbox" id="sendMail" ${mailEnabled ? "checked" : "disabled"} style="margin-top:4px">
-            <label for="sendMail" style="font-weight:400;font-size:.85rem;margin:0">Email the applicant about this update${mailEnabled ? "" : " <span class='muted'>(set up email in config to enable)</span>"}</label>
+            <label for="sendMail" style="font-weight:400;font-size:.85rem;margin:0">Email the founder about this update${mailEnabled ? "" : " <span class='muted'>(set up email in config to enable)</span>"}</label>
           </div>
           <button class="btn btn-primary" style="width:100%" id="saveStatus">Save</button>
         </div>
@@ -293,7 +307,8 @@ async function renderDetail(uid) {
     const btn = e.target; btn.disabled = true;
     const status = root.querySelector("#newStatus").value;
     const adminNote = root.querySelector("#adminNote").value.trim();
-    const patch = { adminNote };
+    const patch = {};
+    if (adminNote) patch.messages = [...(a.messages || []), { text: adminNote, at: new Date().toISOString(), by: user.email }];
     const changed = status !== a.status;
     if (changed) {
       patch.status = status;
@@ -303,7 +318,7 @@ async function renderDetail(uid) {
       await store.updateApplication(uid, patch);
       Object.assign(a, patch);
       const mail = root.querySelector("#sendMail")?.checked && (changed || adminNote);
-      if (mail) toast((await mailStatus(a, a.status, adminNote)) ? "Saved and emailed applicant" : "Saved, but the email failed to send");
+      if (mail) toast((await mailStatus(a, a.status, adminNote)) ? "Saved and emailed founder" : "Saved, but the email failed to send");
       else toast("Saved");
       renderDetail(uid);
     } catch (err) { toast(friendlyError(err)); btn.disabled = false; }
@@ -383,9 +398,7 @@ function fundingHTML(a, progress) {
       <button class="btn btn-outline btn-sm" id="addTr">+ Add tranche</button>
       <button class="btn btn-primary btn-sm" id="saveFund">Save funding</button>
     </div>
-    <p class="hint">The startup sees this on their dashboard, including the sanctioned amount, tranches, milestones, release dates and reference numbers.</p>
-    <h3 style="font-size:1rem;margin-top:22px">Progress &amp; utilisation reports from the startup</h3>
-    ${reports.length ? reports.slice().reverse().map(r => `<div class="note"><b>${esc(r.title || "Report")}</b>${r.tranche ? ` · ${esc(r.tranche)}` : ""}${r.amountUsed ? ` · ${esc(money(r.amountUsed))} utilised` : ""}<div style="margin-top:4px">${esc(r.text || "")}</div>${r.file ? `<div style="margin-top:4px">${r.file.url ? `<a href="${esc(r.file.url)}" target="_blank" rel="noopener">${esc(r.file.name)}</a>` : esc(r.file.name)}</div>` : ""}<div class="meta">${fmtDT(r.at)}</div></div>`).join("") : '<p class="small muted">No reports submitted yet.</p>'}
+    <p class="hint">The founder sees this on their dashboard, including the sanctioned amount, tranches, milestones, release dates and reference numbers.</p>
   </div>`;
 }
 
@@ -465,4 +478,66 @@ function renderReports() {
       ${bars("By state", group("state"))}
       ${bars("By stage", group("stage"))}
     </div>`;
+}
+
+// ── Add / edit a startup record (admin) ───────────────────────
+function renderEdit(uid) {
+  const a = uid ? apps.find(x => x.uid === uid) : null;
+  if (uid && !a) { location.hash = ""; return; }
+  const d = a?.data || {};
+  const today = new Date().toISOString().slice(0, 10);
+  const field = f => {
+    const v = esc(d[f.k] ?? "");
+    const lab = `<label for="e-${f.k}">${esc(f.label)}${f.req ? ' <span class="req">*</span>' : ""}</label>`;
+    const input = f.type === "select"
+      ? `<select id="e-${f.k}" data-e="${f.k}"><option value="">Select…</option>${f.options.map(o => `<option${o === d[f.k] ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`
+      : `<input id="e-${f.k}" data-e="${f.k}" type="${f.type || "text"}" value="${v}" ${f.type === "number" ? 'min="0"' : ""}>`;
+    return `<div class="field">${lab}${input}</div>`;
+  };
+  const pairs = [];
+  for (let i = 0; i < REC.length; i += 2) pairs.push(`<div class="field-row">${field(REC[i])}${REC[i + 1] ? field(REC[i + 1]) : "<div></div>"}</div>`);
+  root.innerHTML = `
+    <p style="margin:0 0 12px"><a href="${a ? `#app=${encodeURIComponent(uid)}` : "admin.html"}" class="small">← ${a ? "Back to startup" : "All startups"}</a></p>
+    <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>${a ? "Edit startup" : "Add startup"}</h1></div></div>
+    <div class="panel" style="max-width:860px">
+      <div class="alert alert-info">The founder logs in at <b>${esc(location.host)}</b> with the <b>founder email</b> below, verifies it, and then sees this record's status, messages and funding. They can't edit anything.</div>
+      <div class="field-row">
+        <div class="field"><label for="e-appId">Application ID</label><input id="e-appId" type="text" value="${esc(a?.applicationId || "SFS-" + new Date().getFullYear() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase())}"></div>
+        <div class="field"><label for="e-date">Applied on</label><input id="e-date" type="date" value="${esc((a?.submittedAt || "").slice(0, 10) || today)}"></div>
+      </div>
+      ${a ? "" : `<div class="field"><label for="e-status">Initial status</label><select id="e-status">${ORDER.map(s => `<option value="${s}">${STATUS[s]}</option>`).join("")}</select></div>`}
+      ${pairs.join("")}
+      <div class="panel-actions"><span></span><button class="btn btn-primary" id="saveRec">${a ? "Save changes" : "Create startup"}</button></div>
+    </div>`;
+
+  root.querySelector("#saveRec").addEventListener("click", async e => {
+    const data = { ...(a?.data || {}) };
+    root.querySelectorAll("[data-e]").forEach(el => { data[el.dataset.e] = el.value.trim(); });
+    data.founderEmail = (data.founderEmail || "").toLowerCase();
+    const missing = REC.filter(f => f.req && !data[f.k]).map(f => f.label);
+    if (missing.length) { toast("Required: " + missing.join(", ")); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.founderEmail)) { toast("Enter a valid founder email"); return; }
+    const applicationId = root.querySelector("#e-appId").value.trim();
+    const dateV = root.querySelector("#e-date").value;
+    const submittedAt = dateV ? new Date(dateV + "T10:00:00").toISOString() : new Date().toISOString();
+    e.target.disabled = true;
+    try {
+      if (a) {
+        const patch = { data, founderEmail: data.founderEmail, applicationId, submittedAt };
+        await store.updateApplication(uid, patch);
+        Object.assign(a, patch);
+        toast("Saved");
+        location.hash = "app=" + encodeURIComponent(uid);
+      } else {
+        const status = root.querySelector("#e-status").value;
+        const rec = { data, founderEmail: data.founderEmail, applicationId, submittedAt, status,
+          timeline: [{ status: "submitted", at: submittedAt, by: user.email }].concat(status !== "submitted" ? [{ status, at: new Date().toISOString(), by: user.email }] : []),
+          messages: [], assignedTo: [] };
+        const id = await store.createApplication(rec);
+        apps.push({ uid: id, ...rec });
+        toast("Startup added");
+        location.hash = "app=" + encodeURIComponent(id);
+      }
+    } catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
+  });
 }
