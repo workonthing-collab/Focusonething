@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in — Srujan Fund Support</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230f5a47'/><text x='16' y='22' font-size='17' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'>S</text></svg>">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a href="index.html" class="logo"><span class="logo-mark">S</span><span>Srujan Fund Support<small>Applicant portal</small></span></a>
+      <a href="index.html" class="btn btn-ghost btn-sm">← Back to site</a>
+    </div>
+  </header>
+
+  <main class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-tabs" role="tablist">
+        <button type="button" data-tab="login" class="active">Log in</button>
+        <button type="button" data-tab="signup">Create account</button>
+      </div>
+
+      <div id="msg"></div>
+
+      <!-- Login -->
+      <form id="loginForm" novalidate>
+        <h2 style="font-size:1.3rem">Welcome back</h2>
+        <p class="muted small">Log in to continue your application.</p>
+        <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="li-pw">Password</label><input id="li-pw" type="password" autocomplete="current-password" required></div>
+        <button class="btn btn-primary" style="width:100%" type="submit">Log in</button>
+        <p class="small" style="margin:14px 0 0;text-align:center"><button type="button" class="link-btn" id="forgotBtn">Forgot password?</button></p>
+      </form>
+
+      <!-- Signup -->
+      <form id="signupForm" class="hidden" novalidate>
+        <h2 style="font-size:1.3rem">Create your account</h2>
+        <p class="muted small">One account per startup. Use the founder's email.</p>
+        <div class="field"><label for="su-name">Founder's full name</label><input id="su-name" type="text" autocomplete="name" required></div>
+        <div class="field"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="su-pw">Password</label><input id="su-pw" type="password" autocomplete="new-password" minlength="8" required><p class="hint">At least 8 characters.</p></div>
+        <div class="field"><label for="su-pw2">Confirm password</label><input id="su-pw2" type="password" autocomplete="new-password" required></div>
+        <div class="field" style="display:flex;gap:10px;align-items:flex-start">
+          <input id="su-terms" type="checkbox" style="margin-top:5px">
+          <label for="su-terms" style="font-weight:400;font-size:.85rem">I confirm the information I submit will be true and complete, and I agree to it being used to evaluate my application.</label>
+        </div>
+        <button class="btn btn-primary" style="width:100%" type="submit">Create account</button>
+      </form>
+    </div>
+  </main>
+
+  <script type="module">
+    import "./assets/js/common.js";
+    import { store, friendlyError } from "./assets/js/store.js";
+
+    const $ = id => document.getElementById(id);
+    const msg = (text, type = "error") => { $("msg").innerHTML = text ? `<div class="alert alert-${type}">${text}</div>` : ""; };
+    const tabs = document.querySelectorAll("[data-tab]");
+
+    function show(tab) {
+      tabs.forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+      $("loginForm").classList.toggle("hidden", tab !== "login");
+      $("signupForm").classList.toggle("hidden", tab !== "signup");
+      msg("");
+    }
+    tabs.forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
+    if (new URLSearchParams(location.search).get("mode") === "signup") show("signup");
+
+    let busy = false;
+    store.onUser(u => { if (u && !busy) location.replace("dashboard.html"); });
+
+    async function run(form, fn) {
+      const btn = form.querySelector("button[type=submit]");
+      busy = true; btn.disabled = true; msg("");
+      try { await fn(); location.replace("dashboard.html"); }
+      catch (e) { msg(friendlyError(e)); }
+      finally { busy = false; btn.disabled = false; }
+    }
+
+    $("loginForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const email = $("li-email").value, password = $("li-pw").value;
+      if (!email || !password) return msg("Please enter your email and password.");
+      run(e.target, () => store.signIn({ email, password }));
+    });
+
+    $("signupForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const name = $("su-name").value.trim(), email = $("su-email").value, password = $("su-pw").value;
+      if (!name || !email || !password) return msg("Please fill all fields.");
+      if (password.length < 8) return msg("Password should be at least 8 characters.");
+      if (password !== $("su-pw2").value) return msg("Passwords don't match.");
+      if (!$("su-terms").checked) return msg("Please accept the declaration to continue.");
+      run(e.target, () => store.signUp({ name, email, password }));
+    });
+
+    $("forgotBtn").addEventListener("click", async () => {
+      const email = $("li-email").value.trim();
+      if (!email) return msg("Enter your email above, then click 'Forgot password?'.", "info");
+      try { await store.resetPassword(email); msg("Password reset link sent. Check your inbox.", "ok"); }
+      catch (e) { msg(friendlyError(e), "info"); }
+    });
+  </script>
+</body>
+</html>

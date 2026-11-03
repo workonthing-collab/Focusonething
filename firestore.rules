@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Admins are listed in /admins/{uid} (used from Phase 2).
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /applications/{uid} {
+      // Applicant can read their own application; admins can read all.
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+
+      // Applicant can create/edit only while it's a draft, and can only move it to "submitted".
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && request.resource.data.status in ['draft', 'submitted'];
+      allow update: if request.auth != null && request.auth.uid == uid
+                    && resource.data.status == 'draft'
+                    && request.resource.data.status in ['draft', 'submitted'];
+
+      // Admins can change status / notes.
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // add admins from the Firebase console only
+    }
+  }
+}
