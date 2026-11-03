@@ -257,3 +257,32 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #9fd0bf; outline-
   .panel { padding: 20px; }
   .cta-band { padding: 28px; }
 }
+
+/* ── Admin ─────────────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.stat:hover, .stat.active { border-color: var(--brand); }
+.stat .n { font-size: 1.6rem; font-weight: 800; line-height: 1.1; }
+.stat .l { font-size: .8rem; color: var(--muted); }
+.filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 14px; }
+.table-wrap { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 820px; }
+table.data th { text-align: left; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding: 12px 14px; border-bottom: 1px solid var(--line); background: #fafbfa; cursor: pointer; white-space: nowrap; }
+table.data td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.data tbody tr { cursor: pointer; }
+table.data tbody tr:hover { background: #f6fbf9; }
+table.data tbody tr:last-child td { border-bottom: 0; }
+.empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+.admin-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+.admin-side { display: grid; gap: 16px; position: sticky; top: 86px; }
+.score-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; font-size: .9rem; }
+.score-row select { width: 80px; padding: 6px 8px; }
+.score-total { font-weight: 800; font-size: 1.1rem; color: var(--brand); }
+.note { background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: .88rem; white-space: pre-wrap; }
+.note .meta { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+@media (max-width: 1000px) {
+  .stats { grid-template-columns: repeat(3, 1fr); }
+  .filters { grid-template-columns: 1fr 1fr; }
+  .admin-grid { grid-template-columns: 1fr; }
+  .admin-side { position: static; }
+}

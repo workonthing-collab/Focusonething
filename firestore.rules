@@ -23,6 +23,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Private review notes and scores — admins only.
+    match /reviews/{uid} {
+      allow read, write: if isAdmin();
+    }
+
     match /admins/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow write: if false; // add admins from the Firebase console only

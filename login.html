@@ -71,13 +71,14 @@
     tabs.forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
     if (new URLSearchParams(location.search).get("mode") === "signup") show("signup");
 
+    const next = new URLSearchParams(location.search).get("next") === "admin" ? "admin.html" : "dashboard.html";
     let busy = false;
-    store.onUser(u => { if (u && !busy) location.replace("dashboard.html"); });
+    store.onUser(u => { if (u && !busy) location.replace(next); });
 
     async function run(form, fn) {
       const btn = form.querySelector("button[type=submit]");
       busy = true; btn.disabled = true; msg("");
-      try { await fn(); location.replace("dashboard.html"); }
+      try { await fn(); location.replace(next); }
       catch (e) { msg(friendlyError(e)); }
       finally { busy = false; btn.disabled = false; }
     }

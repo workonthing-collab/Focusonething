@@ -120,6 +120,49 @@ export const store = {
     return payload;
   },
 
+  // ── Admin ────────────────────────────────────────────────────
+  async isAdmin(uid) {
+    if (DEMO_MODE) return true; // demo: any logged-in user can open the admin view
+    const { db, F } = await loadFirebase();
+    try { return (await F.getDoc(F.doc(db, "admins", uid))).exists(); } catch { return false; }
+  },
+
+  // Returns [{ uid, ...application }]
+  async listApplications() {
+    if (DEMO_MODE) {
+      const out = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k.startsWith("sfs_app_")) out.push({ uid: k.slice(8), ...LS.get(k, {}) });
+      }
+      return out;
+    }
+    const { db, F } = await loadFirebase();
+    const snap = await F.getDocs(F.collection(db, "applications"));
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  },
+
+  async updateApplication(uid, patch) {
+    const p = { ...patch, updatedAt: new Date().toISOString() };
+    if (DEMO_MODE) { const cur = LS.get("sfs_app_" + uid, {}); LS.set("sfs_app_" + uid, { ...cur, ...p }); return; }
+    const { db, F } = await loadFirebase();
+    await F.updateDoc(F.doc(db, "applications", uid), p);
+  },
+
+  // Private review notes (never visible to applicants)
+  async getReview(uid) {
+    if (DEMO_MODE) return LS.get("sfs_review_" + uid, { notes: [] });
+    const { db, F } = await loadFirebase();
+    const s = await F.getDoc(F.doc(db, "reviews", uid));
+    return s.exists() ? s.data() : { notes: [] };
+  },
+
+  async saveReview(uid, data) {
+    if (DEMO_MODE) { LS.set("sfs_review_" + uid, data); return; }
+    const { db, F } = await loadFirebase();
+    await F.setDoc(F.doc(db, "reviews", uid), data);
+  },
+
   // Returns { name, size, type, path, url, uploadedAt }
   async uploadDocument(uid, key, file) {
     const meta = { name: file.name, size: file.size, type: file.type, uploadedAt: new Date().toISOString() };
