@@ -15,14 +15,33 @@ export function esc(s) {
 
 function initNav() {
   const btn = document.querySelector(".nav-toggle");
-  const links = document.querySelector(".nav-links");
+  const links = document.querySelector(".navbar") || document.querySelector(".nav-links");
   if (btn && links) {
-    btn.addEventListener("click", () => links.classList.toggle("open"));
-    links.querySelectorAll("a").forEach(a => a.addEventListener("click", () => links.classList.remove("open")));
+    btn.addEventListener("click", () => { const o = links.classList.toggle("open"); btn.setAttribute("aria-expanded", o); });
+    links.querySelectorAll("a").forEach(a => a.addEventListener("click", () => { links.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }));
   }
   document.querySelectorAll("[data-year]").forEach(el => (el.textContent = new Date().getFullYear()));
   document.querySelectorAll("[data-site-email]").forEach(el => { el.textContent = site.email; el.href = "mailto:" + site.email; });
+  if (site.feePolicy) document.querySelectorAll("[data-fee-policy]").forEach(el => { el.textContent = site.feePolicy; });
+  initEligibility();
   document.querySelectorAll("[data-mailto]").forEach(el => { el.href = "mailto:" + site.email + "?subject=" + encodeURIComponent("Application – " + site.name); });
+}
+
+function initEligibility() {
+  const boxes = [...document.querySelectorAll("[data-elig]")];
+  if (!boxes.length) return;
+  const res = document.querySelector("[data-elig-result]");
+  const update = () => {
+    const n = boxes.filter(b => b.checked).length, all = n === boxes.length;
+    res.querySelector("[data-elig-count]").textContent = n;
+    res.querySelector("[data-elig-msg]").textContent = all
+      ? "You appear to meet the basic criteria. Final eligibility is confirmed during review."
+      : n ? `${boxes.length - n} requirement(s) not yet confirmed. All are needed to apply.` : "Tick the statements that apply to you.";
+    res.classList.toggle("ok", all);
+    res.querySelector("[data-elig-apply]").classList.toggle("hidden", !all);
+  };
+  boxes.forEach(b => b.addEventListener("change", update));
+  update();
 }
 
 function initDemoBanner() {
@@ -37,9 +56,8 @@ function initAuthNav() {
   const slot = document.querySelector("[data-auth-slot]");
   if (!slot) return;
   store.onUser(u => {
-    slot.innerHTML = u
-      ? `<a class="btn btn-primary btn-sm" href="dashboard.html">My dashboard</a>`
-      : `<a class="btn btn-primary btn-sm" href="login.html">Log in</a>`;
+    if (!slot.dataset.orig) slot.dataset.orig = slot.innerHTML;
+    slot.innerHTML = u ? `<a class="btn btn-primary btn-sm" href="dashboard.html">My Dashboard</a>` : slot.dataset.orig;
   });
 }
 
@@ -54,6 +72,9 @@ const fmtDay = d => { try { return new Date(d).toLocaleDateString("en-IN", { day
 function renderTrust() {
   const s = site;
   const tel = p => (p || "").replace(/[^\d+]/g, "");
+
+  const rib = document.querySelector("[data-ribbon-contacts]");
+  if (rib) rib.innerHTML = [s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : "", s.phone ? `<a href="tel:${esc(tel(s.phone))}">${esc(s.phone)}</a>` : "", s.hours ? `<span>${esc(s.hours)}</span>` : ""].join("");
 
   const top = document.querySelector("[data-topbar]");
   if (top) {

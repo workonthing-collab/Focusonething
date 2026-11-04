@@ -3,6 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
     // Admins are listed in /admins/{uid}, reviewers in /reviewers/{uid}.
     function isAdmin() {
       return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
@@ -13,26 +14,61 @@ service cloud.firestore {
     function assignedTo(appId) {
       return get(/databases/$(database)/documents/applications/$(appId)).data.get('assignedTo', []);
     }
-    // A founder sees a record only if it was created for their email AND they have verified that email.
+    // Founder = verified login whose email matches the record's founderEmail.
     function isFounderOf(data) {
-      return signedIn()
-        && request.auth.token.email_verified == true
-        && request.auth.token.email == data.founderEmail;
+      return verified() && request.auth.token.email == data.founderEmail;
+    }
+    // Fields an applicant may write on their own application.
+    function applicantKeys() {
+      return ['data', 'docs', 'status', 'timeline', 'createdAt', 'submittedAt', 'applicationId', 'founderEmail', 'updatedAt'];
     }
 
-    // Startup records — created and edited by admins only. Founders can only read their own.
     match /applications/{appId} {
       allow read: if isAdmin()
+                  || (signedIn() && appId == request.auth.uid)
                   || isFounderOf(resource.data)
                   || (isReviewer() && request.auth.uid in resource.data.get('assignedTo', []));
+
+      // Applicant creates their own application (doc id = their uid) as a draft or submitted.
+      allow create: if verified() && appId == request.auth.uid
+                    && request.resource.data.founderEmail == request.auth.token.email
+                    && request.resource.data.status in ['draft', 'submitted']
+                    && request.resource.data.keys().hasOnly(applicantKeys());
+
+      // Applicant edits own draft, or submits it. Nothing else.
+      allow update: if verified() && appId == request.auth.uid
+                    && resource.data.status == 'draft'
+                    && request.resource.data.status in ['draft', 'submitted']
+                    && request.resource.data.founderEmail == request.auth.token.email
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(applicantKeys());
+
+      // Applicant replaces document links only while the team has requested documents.
+      allow update: if isFounderOf(resource.data)
+                    && resource.data.status == 'documents_pending'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['docs', 'docsUpdatedAt', 'updatedAt']);
+
+      // Administrators manage everything else (status, remarks, messages, funding, reviewers).
       allow create, update: if isAdmin();
       allow delete: if false;
     }
 
-    // Private admin notes and reviewer scorecards — never visible to founders.
+    // Applicant profile.
+    match /profiles/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow write: if signedIn() && request.auth.uid == uid
+                   && request.resource.data.keys().hasOnly(['name', 'phone', 'role', 'linkedin', 'updatedAt']);
+    }
+
+    // Append-only audit trail of administrative actions.
+    match /audit/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.by == request.auth.token.email;
+      allow update, delete: if false;
+    }
+
+    // Private admin notes and reviewer scorecards: never visible to applicants.
     match /reviews/{appId} {
       allow read, write: if isAdmin();
-
       match /scores/{scorer} {
         allow read: if isAdmin() || (signedIn() && request.auth.uid == scorer);
         allow write: if signedIn() && request.auth.uid == scorer

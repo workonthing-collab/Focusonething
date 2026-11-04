@@ -57,7 +57,22 @@ Setup:
 
 Leave the keys blank to keep emails off; everything else still works.
 
-## Status flow
+## Application statuses
+
+`draft` (applicant still filling) → `submitted` (Application Submitted) → `initial_review` (Under Initial Review) → `documents_pending` (Documents Pending, applicant can update document links) → `under_evaluation` (Under Evaluation) → `shortlisted` → `selected` / `rejected` (Not Selected).
+
+Only administrators can change status. Every administrative action (status change with remark, message, reviewer assignment, funding update, record create/edit) is written to the append-only `audit` collection and shown on the application page.
+
+## Security rules tests
+
+`tests/firestore-rules.test.mjs` checks the rules in the Firestore emulator:
+
+```
+npm i firebase-tools @firebase/rules-unit-testing firebase
+npx firebase emulators:exec --only firestore --project demo-sfs "node tests/firestore-rules.test.mjs"
+```
+
+## Status flow (legacy notes)
 
 `draft` → `submitted` → `under_review` → `shortlisted` → `selected` / `rejected`
 

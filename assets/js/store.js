@@ -112,6 +112,44 @@ export const store = {
     return { uid: u.uid, email: u.email, name: u.displayName || "", verified: u.emailVerified };
   },
 
+  // Founder: replace document links while status is "documents_pending".
+  async updateMyDocs(appId, docs) {
+    const p = { docs, docsUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    if (DEMO_MODE) { const cur = LS.get("sfs_app_" + appId, {}); LS.set("sfs_app_" + appId, { ...cur, ...p }); return p; }
+    const { db, F } = await loadFirebase();
+    await F.updateDoc(F.doc(db, "applications", appId), p);
+    return p;
+  },
+
+  async getProfile(uid) {
+    if (DEMO_MODE) return LS.get("sfs_profile_" + uid, {});
+    const { db, F } = await loadFirebase();
+    const s = await F.getDoc(F.doc(db, "profiles", uid));
+    return s.exists() ? s.data() : {};
+  },
+
+  async saveProfile(uid, p) {
+    const v = { ...p, updatedAt: new Date().toISOString() };
+    if (DEMO_MODE) { LS.set("sfs_profile_" + uid, v); return; }
+    const { db, F } = await loadFirebase();
+    await F.setDoc(F.doc(db, "profiles", uid), v);
+  },
+
+  // Append-only audit trail of administrative actions.
+  async addAudit(entry) {
+    const e = { ...entry, at: new Date().toISOString() };
+    if (DEMO_MODE) { const l = LS.get("sfs_audit", []); l.push(e); LS.set("sfs_audit", l); return; }
+    const { db, F } = await loadFirebase();
+    await F.addDoc(F.collection(db, "audit"), e);
+  },
+
+  async listAudit(appId) {
+    if (DEMO_MODE) return LS.get("sfs_audit", []).filter(e => e.appId === appId).sort((a, b) => b.at.localeCompare(a.at));
+    const { db, F } = await loadFirebase();
+    const snap = await F.getDocs(F.query(F.collection(db, "audit"), F.where("appId", "==", appId)));
+    return snap.docs.map(d => d.data()).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+  },
+
   // Founder: records the admin created for this email.
   async getMyApplications(email) {
     email = (email || "").trim().toLowerCase();
@@ -157,8 +195,11 @@ export const store = {
     return snap.exists() ? snap.data() : null;
   },
 
+  // Founder: save own application (doc id = uid). Only founder-editable keys are sent.
   async saveApplication(uid, data) {
-    const payload = { ...data, updatedAt: new Date().toISOString() };
+    const KEYS = ["data", "docs", "status", "timeline", "createdAt", "submittedAt", "applicationId", "founderEmail"];
+    const payload = { updatedAt: new Date().toISOString() };
+    KEYS.forEach(k => { if (data[k] !== undefined) payload[k] = data[k]; });
     if (DEMO_MODE) { LS.set("sfs_app_" + uid, payload); return payload; }
     const { db, F } = await loadFirebase();
     await F.setDoc(F.doc(db, "applications", uid), payload, { merge: true });

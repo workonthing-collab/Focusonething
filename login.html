@@ -6,7 +6,7 @@
   <title>Log in — Srujan Fund Support</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/style.css">
   <link rel="icon" type="image/svg+xml" href="assets/img/logo-mark.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
@@ -15,7 +15,7 @@
 <body>
   <header class="site-header">
     <div class="container nav">
-      <a href="index.html" class="logo"><img src="assets/img/logo.svg" alt="" class="logo-seal" width="46" height="46"><span class="logo-text">Srujan Fund Support<small>Applicant portal</small></span></a>
+      <a href="index.html" class="logo"><img src="assets/img/logo.svg" alt="" class="logo-seal" width="46" height="46"><span class="logo-text">Srujan Fund Support<small>Applicant Portal</small></span></a>
       <a href="index.html" class="btn btn-ghost btn-sm">← Back to site</a>
     </div>
   </header>
@@ -27,8 +27,8 @@
         <div class="logo-text" style="font-size:1.05rem;margin-top:6px">Srujan Fund Support</div>
       </div>
       <div class="auth-tabs" role="tablist">
-        <button type="button" data-tab="login" class="active">Log in</button>
-        <button type="button" data-tab="signup">Create account</button>
+        <button type="button" data-tab="login" class="active">Applicant Login</button>
+        <button type="button" data-tab="signup">Register to Apply</button>
       </div>
 
       <div id="msg"></div>
@@ -36,7 +36,7 @@
       <!-- Login -->
       <form id="loginForm" novalidate>
         <h2 style="font-size:1.3rem">Welcome back</h2>
-        <p class="muted small">Log in to see your application status.</p>
+        <p class="muted small">Log in to continue your application or track its status.</p>
         <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="li-pw">Password</label><input id="li-pw" type="password" autocomplete="current-password" required></div>
         <button class="btn btn-primary" style="width:100%" type="submit">Log in</button>
@@ -45,17 +45,17 @@
 
       <!-- Signup -->
       <form id="signupForm" class="hidden" novalidate>
-        <h2 style="font-size:1.3rem">Create your account</h2>
-        <p class="muted small">Use the <b>same email you applied with</b>. We'll send a link to verify it.</p>
+        <h2 style="font-size:1.3rem">Register to apply</h2>
+        <p class="muted small">Use an email you check regularly. We'll send a link to verify it, and all updates about your application go there.</p>
         <div class="field"><label for="su-name">Founder's full name</label><input id="su-name" type="text" autocomplete="name" required></div>
         <div class="field"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="su-pw">Password</label><input id="su-pw" type="password" autocomplete="new-password" minlength="8" required><p class="hint">At least 8 characters.</p></div>
         <div class="field"><label for="su-pw2">Confirm password</label><input id="su-pw2" type="password" autocomplete="new-password" required></div>
         <div class="field" style="display:flex;gap:10px;align-items:flex-start">
           <input id="su-terms" type="checkbox" style="margin-top:5px">
-          <label for="su-terms" style="font-weight:400;font-size:.85rem">I confirm this is my own email address and I agree to it being used to show my application status.</label>
+          <label for="su-terms" style="font-weight:400;font-size:.85rem">I confirm this is my own email address, and I agree to the <a href="terms.html" target="_blank">Terms</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>. I understand this is a privately operated programme and applying does not guarantee funding.</label>
         </div>
-        <button class="btn btn-primary" style="width:100%" type="submit">Create account</button>
+        <button class="btn btn-apply" style="width:100%" type="submit">Register</button>
       </form>
     </div>
   </main>

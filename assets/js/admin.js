@@ -3,10 +3,10 @@ import "./common.js";
 import { toast, esc } from "./common.js";
 import { store, friendlyError } from "./store.js";
 import { mailStatus, mailEnabled } from "./mail.js";
-import { STEPS, STATUS, STATES, SECTORS, flatFields, MONEY, money } from "./schema.js";
+import { STEPS, STATUS, STATES, SECTORS, ADMIN_STATUSES, STAGES as PSTAGES, stageIndex, flatFields, MONEY, money } from "./schema.js";
 
 const root = document.getElementById("root");
-const ORDER = ["submitted", "under_review", "shortlisted", "selected", "rejected"];
+const ORDER = ADMIN_STATUSES;
 const STAGES = ["Idea", "Prototype / MVP", "Early revenue", "Scaling"];
 // Fields the admin enters for each startup record.
 const REC = [
@@ -82,7 +82,7 @@ function route() {
 function filtered() {
   const q = filt.q.trim().toLowerCase();
   return apps.filter(a => {
-    if (filt.status && a.status !== filt.status) return false;
+    if (filt.status ? a.status !== filt.status : a.status === "draft") return false;
     if (filt.sector && D(a).sector !== filt.sector) return false;
     if (filt.state && D(a).state !== filt.state) return false;
     if (q) {
@@ -99,7 +99,7 @@ function filtered() {
 
 function renderList() {
   const counts = Object.fromEntries(ORDER.map(s => [s, apps.filter(a => a.status === s).length]));
-  const total = apps.length;
+  const total = apps.filter(a => a.status !== "draft").length;
   const sel = (id, label, opts, cur) => `<select id="${id}"><option value="">${label}</option>${opts.map(o => `<option value="${esc(o[0] ?? o)}"${(o[0] ?? o) === cur ? " selected" : ""}>${esc(o[1] ?? o)}</option>`).join("")}</select>`;
 
   root.innerHTML = `
@@ -113,11 +113,11 @@ function renderList() {
     </div>
     <div class="stats">
       <button class="stat${!filt.status ? " active" : ""}" data-st=""><div class="n">${total}</div><div class="l">All startups</div></button>
-      ${["submitted", "under_review", "shortlisted", "selected", "rejected"].map(s => `<button class="stat${filt.status === s ? " active" : ""}" data-st="${s}"><div class="n">${counts[s]}</div><div class="l">${s === "submitted" ? "New" : STATUS[s]}</div></button>`).join("")}
+      ${["submitted", "initial_review", "documents_pending", "under_evaluation", "shortlisted", "selected", "rejected", ...(role === "admin" ? ["draft"] : [])].map(s => `<button class="stat${filt.status === s ? " active" : ""}" data-st="${s}"><div class="n">${s === "under_evaluation" ? counts[s] + apps.filter(a => a.status === "under_review").length : counts[s] ?? apps.filter(a => a.status === s).length}</div><div class="l">${s === "submitted" ? "New" : s === "draft" ? "Drafts (not submitted)" : STATUS[s]}</div></button>`).join("")}
     </div>
     <div class="filters">
       <input id="q" type="text" placeholder="Search company, founder, email, ID…" value="${esc(filt.q)}">
-      ${sel("fStatus", "All statuses", ORDER.map(s => [s, STATUS[s]]), filt.status)}
+      ${sel("fStatus", "All submitted", [...ORDER, "draft"].map(s => [s, STATUS[s]]), filt.status)}
       ${sel("fSector", "All sectors", SECTORS, filt.sector)}
       ${sel("fState", "All states", STATES, filt.state)}
       <button class="btn btn-ghost btn-sm" id="clearBtn">Clear</button>
@@ -208,15 +208,24 @@ async function renderDetail(uid) {
   const mine = cards[user.uid] || { scores: {}, comment: "", recommendation: "" };
   mine.scores ||= {};
 
-  const groups = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:1.1rem;margin:0">Startup details</h2>${isAdmin ? `<a class="btn btn-outline btn-sm" href="#edit=${encodeURIComponent(uid)}">Edit details</a>` : ""}</div>
-    <table class="summary-table" style="margin-top:12px">
+  const docDefs = STEPS.find(x => x.id === "documents").docs;
+  const groups = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="font-size:1.1rem;margin:0">Application</h2>${isAdmin ? `<a class="btn btn-outline btn-sm" href="#edit=${encodeURIComponent(uid)}">Edit details</a>` : ""}</div>
+    <table class="summary-table" style="margin:12px 0 18px">
       <tr><th>Application ID</th><td>${esc(a.applicationId || "—")}</td></tr>
-      <tr><th>Applied on</th><td>${esc(fmtDate(a.submittedAt))}</td></tr>
-      ${REC.map(f => { const v = MONEY.has(f.k) ? money(D(a)[f.k]) : D(a)[f.k]; return `<tr><th>${esc(f.label)}</th><td>${esc(v) || '<span class="muted">—</span>'}</td></tr>`; }).join("")}
+      <tr><th>Submitted on</th><td>${esc(fmtDT(a.submittedAt) || "Not submitted")}</td></tr>
+      <tr><th>Source</th><td>${a.timeline?.[0]?.by === "applicant" ? "Submitted online by applicant" : "Recorded by programme team"}</td></tr>
+      ${a.docsUpdatedAt ? `<tr><th>Documents updated</th><td>${esc(fmtDT(a.docsUpdatedAt))}</td></tr>` : ""}
     </table>
-    ${Object.keys(a.docs || {}).length ? `<h3 style="font-size:.95rem;margin-top:18px">Documents</h3><table class="summary-table">${Object.entries(a.docs).map(([k, f]) => `<tr><th>${esc(k)}</th><td>${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>` : esc(f.name)}</td></tr>`).join("")}</table>` : ""}
-    <h3 style="font-size:.95rem;margin-top:22px">Messages sent to founder</h3>
-    ${(a.messages || []).length ? a.messages.slice().reverse().map(m => `<div class="note">${esc(m.text)}<div class="meta">${esc(m.by || "")} · ${fmtDT(m.at)}</div></div>`).join("") : '<p class="small muted">None yet. Use "Update status" to send one.</p>'}`;
+    <div class="summary-group"><h3>Documents</h3><table class="summary-table">${docDefs.map(d => `<tr><th>${esc(d.label)}</th><td>${a.docs?.[d.k]?.url ? `<a href="${esc(a.docs[d.k].url)}" target="_blank" rel="noopener">Open link</a>` : '<span class="muted">Not provided</span>'}</td></tr>`).join("")}</table></div>
+    ${STEPS.filter(x => x.id !== "review").map(x => {
+      const rows = flatFields(x).filter(f => D(a)[f.k] !== undefined && D(a)[f.k] !== "").map(f => {
+        const v = MONEY.has(f.k) ? money(D(a)[f.k]) : D(a)[f.k];
+        return `<tr><th>${esc(f.label)}</th><td>${f.type === "url" ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</td></tr>`;
+      }).join("");
+      return rows ? `<div class="summary-group"><h3>${esc(x.title)}</h3><table class="summary-table">${rows}</table></div>` : "";
+    }).join("")}
+    <h3 style="font-size:.95rem;margin-top:22px">Messages &amp; remarks sent to applicant</h3>
+    ${[...(a.messages || []).map(m => ({ ...m, kind: "Message" })), ...(a.timeline || []).filter(t => t.remark).map(t => ({ text: t.remark, at: t.at, by: t.by, kind: "Remark · " + (STATUS[t.status] || t.status) }))].sort((x, y) => (y.at || "").localeCompare(x.at || "")).map(m => `<div class="note"><div class="meta" style="margin:0 0 4px">${esc(m.kind)} · ${esc(m.by || "")} · ${fmtDT(m.at)}</div>${esc(m.text)}</div>`).join("") || '<p class="small muted">None yet.</p>'}`;
 
   // Other scorers' cards (admin only)
   const others = Object.entries(cards).filter(([k]) => k !== user.uid);
@@ -245,9 +254,11 @@ async function renderDetail(uid) {
           <h2 style="font-size:1.05rem">Update status</h2>
           <div class="field"><label for="newStatus">Status</label>
             <select id="newStatus">${ORDER.map(s => `<option value="${s}"${s === a.status ? " selected" : ""}>${STATUS[s]}</option>`).join("")}</select></div>
-          <div class="field"><label for="adminNote">New message to founder</label>
-            <textarea id="adminNote" style="min-height:90px" placeholder="Shown on the founder's dashboard"></textarea>
-            <p class="hint">Optional. Added to the founder's message list.</p></div>
+          <div class="field"><label for="remark">Remark to applicant</label>
+            <textarea id="remark" style="min-height:80px" placeholder="e.g. Please upload a clearer copy of the PAN card"></textarea>
+            <p class="hint">Shown with the status change on the applicant's dashboard. Recommended for Documents Pending and Not Selected.</p></div>
+          <div class="field"><label for="adminNote">Separate message (optional)</label>
+            <textarea id="adminNote" style="min-height:60px" placeholder="General message to the applicant"></textarea></div>
           <div class="field" style="display:flex;gap:8px;align-items:flex-start">
             <input type="checkbox" id="sendMail" ${mailEnabled ? "checked" : "disabled"} style="margin-top:4px">
             <label for="sendMail" style="font-weight:400;font-size:.85rem;margin:0">Email the founder about this update${mailEnabled ? "" : " <span class='muted'>(set up email in config to enable)</span>"}</label>
@@ -281,9 +292,10 @@ async function renderDetail(uid) {
           <button class="btn btn-outline btn-sm" style="margin-top:8px" id="addNote">Add note</button>
         </div>` : ""}
         <div class="panel">
-          <h2 style="font-size:1.05rem">History</h2>
+          <h2 style="font-size:1.05rem">Status history</h2>
           <ul class="timeline">${(a.timeline || []).slice().reverse().map(t => `<li class="done"><span class="dot"></span><b>${STATUS[t.status] || t.status}</b><span>${fmtDT(t.at)}${t.by && isAdmin ? " · " + esc(t.by) : ""}</span></li>`).join("") || '<li><span class="dot"></span><b>Draft</b><span>Not submitted yet</span></li>'}</ul>
         </div>
+        ${isAdmin ? `<div class="panel"><h2 style="font-size:1.05rem">Audit trail</h2><div id="auditBox" class="small muted">Loading…</div></div>` : ""}
       </aside>
     </div>`;
 
@@ -302,21 +314,36 @@ async function renderDetail(uid) {
 
   if (!isAdmin) return;
   if (a.status === "selected") bindFunding(a, uid);
+  store.listAudit(uid).then(list => {
+    const box = root.querySelector("#auditBox");
+    if (!box) return;
+    const label = e => e.action === "status" ? `Status: ${STATUS[e.from] || e.from || "—"} → ${STATUS[e.to] || e.to}${e.remark ? ` (remark: "${e.remark}")` : ""}`
+      : e.action === "message" ? "Message sent to applicant" : e.action === "assign" ? `Reviewers set: ${(e.reviewers || []).join(", ") || "none"}`
+      : e.action === "funding" ? "Funding details updated" : e.action === "create" ? "Record created by programme team" : e.action === "edit" ? "Application details edited" : e.action;
+    box.innerHTML = list.length ? `<ul class="notif">${list.map(e => `<li><b style="font-size:.85rem">${esc(label(e))}</b><time>${esc(e.by || "")} · ${fmtDT(e.at)}</time></li>`).join("")}</ul>` : "No administrative actions recorded yet.";
+  }).catch(() => { const box = root.querySelector("#auditBox"); if (box) box.textContent = "Couldn't load the audit trail."; });
 
   root.querySelector("#saveStatus").addEventListener("click", async e => {
     const btn = e.target; btn.disabled = true;
     const status = root.querySelector("#newStatus").value;
-    const adminNote = root.querySelector("#adminNote").value.trim();
-    const patch = {};
-    if (adminNote) patch.messages = [...(a.messages || []), { text: adminNote, at: new Date().toISOString(), by: user.email }];
+    let remark = root.querySelector("#remark").value.trim();
+    let adminNote = root.querySelector("#adminNote").value.trim();
     const changed = status !== a.status;
+    if (!changed && remark) { adminNote = [remark, adminNote].filter(Boolean).join("\n\n"); remark = ""; }
+    if (!changed && !adminNote) { toast("Nothing to save"); btn.disabled = false; return; }
+    const now = new Date().toISOString();
+    const patch = {};
+    if (adminNote) patch.messages = [...(a.messages || []), { text: adminNote, at: now, by: user.email }];
     if (changed) {
       patch.status = status;
-      patch.timeline = [...(a.timeline || []), { status, at: new Date().toISOString(), by: user.email }];
+      patch.timeline = [...(a.timeline || []), { status, at: now, by: user.email, ...(remark ? { remark } : {}) }];
     }
     try {
       await store.updateApplication(uid, patch);
+      if (changed) await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: "status", from: a.status, to: status, remark, by: user.email });
+      if (adminNote) await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: "message", text: adminNote, by: user.email });
       Object.assign(a, patch);
+      adminNote = [remark, adminNote].filter(Boolean).join("\n\n");
       const mail = root.querySelector("#sendMail")?.checked && (changed || adminNote);
       if (mail) toast((await mailStatus(a, a.status, adminNote)) ? "Saved and emailed founder" : "Saved, but the email failed to send");
       else toast("Saved");
@@ -326,7 +353,7 @@ async function renderDetail(uid) {
 
   root.querySelectorAll("[data-assign]").forEach(cb => cb.addEventListener("change", async () => {
     const next = [...root.querySelectorAll("[data-assign]:checked")].map(x => x.dataset.assign);
-    try { await store.updateApplication(uid, { assignedTo: next }); a.assignedTo = next; toast("Reviewers updated"); }
+    try { await store.updateApplication(uid, { assignedTo: next }); await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: "assign", reviewers: next.map(rName), by: user.email }); a.assignedTo = next; toast("Reviewers updated"); }
     catch (err) { cb.checked = !cb.checked; toast(friendlyError(err)); }
   }));
 
@@ -427,7 +454,7 @@ function bindFunding(a, uid) {
       agreementDate: root.querySelector("#fAgr").value,
       tranches: read().filter(t => t.label || t.amount).map(t => ({ ...t, amount: t.amount === "" ? "" : +t.amount }))
     };
-    try { await store.updateApplication(uid, { funding }); a.funding = funding; toast("Funding saved"); renderDetail(uid); }
+    try { await store.updateApplication(uid, { funding }); await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: "funding", sanctioned: funding.sanctioned, by: user.email }); a.funding = funding; toast("Funding saved"); renderDetail(uid); }
     catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
   });
 }
@@ -455,9 +482,8 @@ function renderReports() {
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     months.push([d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" }), sub.filter(a => (a.submittedAt || "").slice(0, 7) === key).length]);
   }
-  const FUN = ["submitted", "under_review", "shortlisted", "selected"];
-  const furthest = a => Math.max(0, ...[a.status, ...(a.timeline || []).map(t => t.status)].map(x => FUN.indexOf(x)));
-  const funnel = FUN.map((st, i) => [STATUS[st], sub.filter(a => furthest(a) >= i).length]);
+  const furthest = a => Math.max(0, ...[a.status, ...(a.timeline || []).map(t => t.status)].map(x => x === "rejected" ? -1 : stageIndex(x)));
+  const funnel = PSTAGES.map((st, i) => [i === PSTAGES.length - 1 ? "Selected" : st.label, i === PSTAGES.length - 1 ? sel.length : sub.filter(a => furthest(a) >= i).length]);
   const kpi = (n, l) => `<div class="stat" style="cursor:default"><div class="n">${n}</div><div class="l">${l}</div></div>`;
   const rate = sub.length ? Math.round(sel.length / sub.length * 100) + "%" : "—";
 
@@ -525,6 +551,7 @@ function renderEdit(uid) {
       if (a) {
         const patch = { data, founderEmail: data.founderEmail, applicationId, submittedAt };
         await store.updateApplication(uid, patch);
+        await store.addAudit({ appId: uid, applicationId, action: "edit", by: user.email });
         Object.assign(a, patch);
         toast("Saved");
         location.hash = "app=" + encodeURIComponent(uid);
@@ -534,6 +561,7 @@ function renderEdit(uid) {
           timeline: [{ status: "submitted", at: submittedAt, by: user.email }].concat(status !== "submitted" ? [{ status, at: new Date().toISOString(), by: user.email }] : []),
           messages: [], assignedTo: [] };
         const id = await store.createApplication(rec);
+        await store.addAudit({ appId: id, applicationId, action: "create", to: status, by: user.email });
         apps.push({ uid: id, ...rec });
         toast("Startup added");
         location.hash = "app=" + encodeURIComponent(id);

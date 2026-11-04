@@ -55,7 +55,7 @@ export const STEPS = [
   { id: "funding", title: "Funding requirement", fields: [
     { row: [
       { k: "amountAsked", label: "Amount requested (₹)", type: "number", req: true, min: 0 },
-      { k: "supportType", label: "Preferred support", type: "select", req: true, options: ["Seed grant", "Equity investment", "Convertible note / debenture", "Debt", "Mentorship & services only", "Not sure"] }
+      { k: "supportType", label: "Preferred funding instrument", type: "select", req: true, options: ["Grant", "Equity", "Convertible instrument", "Debt", "Not sure"], hint: "Final terms are set only in a signed funding agreement" }
     ]},
     { k: "useOfFunds", label: "How will you use the funds?", type: "textarea", req: true, max: 1500, hint: "Break it down: product development, hiring, marketing, working capital etc., with rough amounts and timelines." },
     { row: [
@@ -78,10 +78,28 @@ export const STEPS = [
 ];
 
 export const STATUS = {
-  draft: "Draft", submitted: "Submitted", under_review: "Under review",
-  shortlisted: "Shortlisted", selected: "Selected", rejected: "Not selected"
+  draft: "Draft (not submitted)",
+  submitted: "Application Submitted",
+  initial_review: "Under Initial Review",
+  documents_pending: "Documents Pending",
+  under_evaluation: "Under Evaluation",
+  under_review: "Under Evaluation", // legacy value
+  shortlisted: "Shortlisted",
+  selected: "Selected",
+  rejected: "Not Selected"
 };
-export const FLOW = ["submitted", "under_review", "shortlisted", "selected"];
+// Statuses an administrator can set, in order.
+export const ADMIN_STATUSES = ["submitted", "initial_review", "documents_pending", "under_evaluation", "shortlisted", "selected", "rejected"];
+// Progress stages shown to applicants.
+export const STAGES = [
+  { k: "submitted", label: "Application Submitted", match: ["submitted"] },
+  { k: "verification", label: "Initial Review & Documents", match: ["initial_review", "documents_pending"] },
+  { k: "evaluation", label: "Under Evaluation", match: ["under_evaluation", "under_review"] },
+  { k: "shortlisted", label: "Shortlisted", match: ["shortlisted"] },
+  { k: "decision", label: "Decision", match: ["selected", "rejected"] }
+];
+export const stageIndex = st => STAGES.findIndex(x => x.match.includes(st));
+export const FLOW = ["submitted", "initial_review", "under_evaluation", "shortlisted", "selected"];
 
 export const flatFields = s => (s.fields || []).flatMap(f => f.row || [f]);
 export const MONEY = new Set(["amountAsked", "revenueLastFY"]);

@@ -37,12 +37,13 @@ export function mailSubmitted(app) {
 }
 
 const STATUS_TEXT = {
-  under_review: "Your application is now under review by our team.",
-  shortlisted: "We're pleased to tell you that your application has been shortlisted. Our team will contact you about the next round.",
-  selected: "Congratulations! Your startup has been selected. Our team will reach out with the next steps.",
-  rejected: "After careful review, we're unable to take your application forward in this cycle. Thank you for applying, and you're welcome to apply again in future.",
-  draft: "Your application has been reopened so you can make changes. Please log in, update it and submit again.",
-  submitted: "Your application status has been updated to Submitted."
+  submitted: "Your application status has been updated to Application Submitted.",
+  initial_review: "Your application is now under initial review. Our team is screening it and verifying your documents.",
+  documents_pending: "Some documents for your application are missing or need to be updated. Please log in to your dashboard, see the remark, and update them in the Documents tab.",
+  under_evaluation: "Your application is now under evaluation by our review team.",
+  shortlisted: "Your application has been shortlisted. Our team will contact you about the next step.",
+  selected: "Your startup has been selected. Funding terms will be shared with you and confirmed through a signed funding agreement.",
+  rejected: "After careful review, we're unable to take your application forward in this cycle. Thank you for applying."
 };
 
 export function mailStatus(app, status, note) {
