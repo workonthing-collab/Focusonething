@@ -777,3 +777,7 @@ body.portal { background: var(--bg); }
   @page { size: A4; margin: 18mm 16mm; }
 }
 .p-user .p-user-email { display: block !important; }
+.guide-steps { counter-reset: g; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.guide-steps li { counter-increment: g; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center; font-size: .92rem; color: var(--ink-2); }
+.guide-steps li::before { content: counter(g); width: 28px; height: 28px; border-radius: 50%; background: var(--brand-soft); color: var(--navy); font-weight: 700; font-size: .8rem; display: grid; place-items: center; }
+.p-wrap .grid-2 { gap: 20px; }

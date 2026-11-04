@@ -357,15 +357,61 @@ function pageHead(title, sub) {
 }
 function bindAppSel() { root.querySelector("#appSel")?.addEventListener("change", e => { app = apps.find(x => x.uid === e.target.value); show(section); }); }
 
+// Section-specific guidance shown before data exists.
+const STAGE_INFO = [
+  ["Application Submitted", "Your application is received and gets a unique Application ID."],
+  ["Initial Review & Documents", "The team screens the application and verifies documents. If anything is missing, you'll see 'Documents Pending' with a remark."],
+  ["Under Evaluation", "Assigned reviewers score the application on six criteria."],
+  ["Shortlisted", "Shortlisted startups may be invited to interact with the team."],
+  ["Decision", "The final decision (Selected / Not Selected) is posted here."]
+];
+function emptyTrack() {
+  return `<ol class="track" aria-label="Application progress">${STAGES.map((s, i) => `<li><span class="dot">${i + 1}</span><span class="lbl">${esc(s.label)}</span></li>`).join("")}</ol>`;
+}
+function statusGuide() {
+  return `<section class="panel"><h2 style="font-size:1.1rem">What each stage means</h2>
+    <ul class="notif">${STAGE_INFO.map(([t, d]) => `<li><b>${esc(t)}</b><p>${esc(d)}</p></li>`).join("")}</ul></section>`;
+}
+function letterGuide() {
+  return `<div class="grid-2" style="margin-top:20px">
+    <section class="panel"><h2 style="font-size:1.1rem">What the approval letter contains</h2>
+      <ul class="checklist small"><li>Reference number and date of issue</li><li>Sanctioned amount, in figures and words</li><li>Funding instrument</li><li>Tranche schedule linked to milestones</li><li>Conditions of approval</li><li>Name and designation of the signatory</li></ul></section>
+    <section class="panel"><h2 style="font-size:1.1rem">How you receive it</h2>
+      <ol class="guide-steps"><li>Submit your application</li><li>Complete evaluation</li><li>Get selected</li><li>The letter is issued here. Download it as a PDF.</li></ol></section>
+  </div>`;
+}
+function disbGuide() {
+  return `<section class="panel" style="margin-top:20px"><h2 style="font-size:1.1rem">How disbursement works</h2>
+      <ol class="guide-steps"><li>Approval letter is issued</li><li>Funding agreement is signed</li><li>First tranche is released</li><li>Later tranches are released as agreed milestones are met</li></ol>
+      <p class="small muted" style="margin:10px 0 0">Every release appears below with its date and reference number.</p></section>
+    <section class="panel" style="margin-top:20px"><h2 style="font-size:1.1rem">Tranche schedule</h2>
+      <div class="table-wrap"><table class="data" style="min-width:520px"><thead><tr><th>Tranche</th><th>Amount</th><th>Milestone</th><th>Status</th><th>Released on</th></tr></thead>
+      <tbody><tr style="cursor:default"><td colspan="5" class="empty" style="padding:22px">No tranches yet</td></tr></tbody></table></div></section>`;
+}
+const emptyKpis = labels => `<div class="p-cards">${labels.map(l => `<div class="p-kpi"><span>${l}</span><b class="muted" style="color:var(--muted)">—</b></div>`).join("")}</div>`;
+function notSubmittedBar() {
+  return `<div class="alert alert-info" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <span>${app ? "Your application is still a draft and hasn't been submitted." : "You haven't started an application yet."}</span>
+    <button class="btn btn-apply btn-sm" id="goApp">${app ? "Continue application" : "Start application"}</button></div>`;
+}
+
 function renderNotYet(sec) {
-  const t = { status: "Status of Application", letter: "Approval Letter", disbursement: "Disbursement Status" }[sec];
-  root.innerHTML = `${pageHead(t)}
-    <div class="p-empty">
-      <div class="p-empty-ic">!</div>
-      <h2>No submitted application yet</h2>
-      <p class="muted">${app ? "Your application is still a draft. Complete and submit it to see this section." : "Start your application to see this section."}</p>
-      <button class="btn btn-apply" id="goApp">${app ? "Continue application" : "Start application"}</button>
-    </div>`;
+  if (sec === "status") {
+    root.innerHTML = `${pageHead("Status of Application", "Track every stage of your application here.")}
+      ${notSubmittedBar()}
+      <section class="panel" style="margin-bottom:20px">${emptyTrack()}</section>
+      ${statusGuide()}`;
+  } else if (sec === "letter") {
+    root.innerHTML = `${pageHead("Approval Letter", "Issued to selected startups only.")}
+      ${notSubmittedBar()}
+      ${emptyKpis(["Letter status", "Reference no.", "Date of issue", "Sanctioned amount"]).replace('<b class="muted" style="color:var(--muted)">—</b>', "<b>Not issued</b>")}
+      ${letterGuide()}`;
+  } else {
+    root.innerHTML = `${pageHead("Disbursement Status", "Track funds released to your startup.")}
+      ${notSubmittedBar()}
+      ${emptyKpis(["Sanctioned", "Released", "Yet to be released", "Next tranche"])}
+      ${disbGuide()}`;
+  }
   root.querySelector("#goApp").addEventListener("click", () => show("application"));
 }
 
@@ -471,8 +517,10 @@ function renderLetter() {
     const msg = a.status === "rejected" ? "An approval letter is issued only to selected startups."
       : a.status === "selected" ? "Your startup has been selected. The approval letter will appear here as soon as it is issued by the programme team."
       : "The approval letter is issued only after your application is selected. Track progress under Status of Application.";
-    root.innerHTML = `${pageHead("Approval Letter")}
-      <div class="p-empty"><div class="p-empty-ic">✉</div><h2>${a.status === "selected" ? "Letter being prepared" : "Not issued yet"}</h2><p class="muted">${msg}</p></div>`;
+    root.innerHTML = `${pageHead("Approval Letter", "Issued to selected startups only.")}
+      <div class="alert ${a.status === "rejected" ? "alert-error" : a.status === "selected" ? "alert-ok" : "alert-info"}">${msg}</div>
+      ${emptyKpis(["Letter status", "Reference no.", "Date of issue", "Sanctioned amount"]).replace('<b class="muted" style="color:var(--muted)">—</b>', `<b>${a.status === "selected" ? "Being prepared" : "Not issued"}</b>`)}
+      ${letterGuide()}`;
     bindAppSel(); return;
   }
   const L = a.funding.letter;
@@ -492,8 +540,10 @@ const TR_BADGE = { planned: "draft", due: "documents_pending", released: "select
 function renderDisbursement() {
   const a = app, f = a.funding || {};
   if (!isSelected() || !f.sanctioned) {
-    root.innerHTML = `${pageHead("Disbursement Status")}
-      <div class="p-empty"><div class="p-empty-ic">₹</div><h2>No disbursement yet</h2><p class="muted">${a.status === "rejected" ? "Disbursement applies only to selected startups." : a.status === "selected" ? "Your disbursement schedule will appear here once the funding terms are finalised." : "Disbursement details appear here after your application is selected and funding is sanctioned."}</p></div>`;
+    root.innerHTML = `${pageHead("Disbursement Status", "Track funds released to your startup.")}
+      <div class="alert ${a.status === "rejected" ? "alert-error" : "alert-info"}">${a.status === "rejected" ? "Disbursement applies only to selected startups." : a.status === "selected" ? "Your disbursement schedule will appear here once the funding terms are finalised." : "Disbursement details appear here after your application is selected and funding is sanctioned."}</div>
+      ${emptyKpis(["Sanctioned", "Released", "Yet to be released", "Next tranche"])}
+      ${disbGuide()}`;
     bindAppSel(); return;
   }
   const tr = f.tranches || [];
