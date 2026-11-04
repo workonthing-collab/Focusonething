@@ -30,7 +30,8 @@ export function letterHTML(a) {
   const conditions = (L.conditions || "").split("\n").map(x => x.trim()).filter(Boolean);
   const addr = [d.city, d.state].filter(Boolean).join(", ");
   return `
-  <article class="letter" id="approvalLetter">
+  <article class="letter${L.specimen ? " specimen" : ""}" id="approvalLetter">
+    ${L.specimen ? '<div class="specimen-mark" aria-hidden="true">SPECIMEN</div>' : ""}
     <header class="lh">
       <img src="assets/img/logo.svg" alt="" width="74" height="74">
       <div>
@@ -62,6 +63,7 @@ export function letterHTML(a) {
       <div><b>${esc(L.signatory || "")}</b></div>
       <div>${esc(L.designation || "")}</div>
     </div>
+    ${L.specimen ? '<p class="specimen-note">SPECIMEN – issued for testing only. This is not a valid approval or commitment of funding.</p>' : ""}
     <footer class="lt-foot">The authenticity of this letter can be verified by logging in to the applicant portal at srujanfundsupport.in.</footer>
   </article>`;
 }

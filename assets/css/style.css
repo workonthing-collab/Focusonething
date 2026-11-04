@@ -813,3 +813,7 @@ body.portal { background: var(--bg); }
   body.print-ack .p-wrap > :not(.ack-card) { display: none !important; }
   body.print-ack .ack-card { box-shadow: none; border-color: #cfd8e3; }
 }
+.letter.specimen { position: relative; overflow: hidden; }
+.specimen-mark { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-family: var(--head); font-weight: 700; font-size: clamp(3rem, 12vw, 7rem); letter-spacing: .12em; color: rgba(179, 38, 30, .13); transform: rotate(-30deg); z-index: 2; }
+.specimen-note { margin-top: 22px; padding: 10px 12px; border: 1.5px dashed #d9534f; color: #b3261e; font-weight: 600; text-align: center; font-size: .85rem; }
+@media print { .specimen-mark { color: rgba(179, 38, 30, .16); -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

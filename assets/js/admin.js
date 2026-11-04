@@ -458,6 +458,7 @@ function letterPanelHTML(a) {
       <div class="field"><label for="lDesig">Signatory designation <span class="req">*</span></label><input id="lDesig" value="${esc(L.designation || "")}" placeholder="e.g. Programme Director"></div>
     </div>
     <div class="field"><label for="lCond">Conditions (one per line, optional)</label><textarea id="lCond" style="min-height:90px" placeholder="Funds to be used only for the purposes stated in the application&#10;Quarterly progress and utilisation reports to be submitted">${esc(L.conditions || "")}</textarea></div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;font-size:.9rem;margin:0 0 14px"><input type="checkbox" id="lSpec" ${L.specimen ? "checked" : ""}> Test letter: print a SPECIMEN watermark</label>
     <div class="field"><label for="lLink">Link to signed / stamped copy (optional)</label><input id="lLink" type="url" value="${esc(L.signedLink || "")}" placeholder="https://drive.google.com/..."></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm" id="lPreview">Preview</button>
@@ -501,7 +502,7 @@ function bindFunding(a, uid) {
   const readLetter = () => ({
     refNo: root.querySelector("#lRef").value.trim(), date: root.querySelector("#lDate").value,
     signatory: root.querySelector("#lSign").value.trim(), designation: root.querySelector("#lDesig").value.trim(),
-    conditions: root.querySelector("#lCond").value.trim(), signedLink: root.querySelector("#lLink").value.trim()
+    conditions: root.querySelector("#lCond").value.trim(), signedLink: root.querySelector("#lLink").value.trim(), specimen: root.querySelector("#lSpec").checked
   });
   root.querySelector("#lPreview").addEventListener("click", () => {
     const box = root.querySelector("#letterPreview");
