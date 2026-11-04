@@ -75,7 +75,8 @@ async function load(selectId) {
   if (!apps.length) {
     try { if (!store.demo && await store.getRole(user.uid)) { location.replace("admin.html"); return; } } catch {}
   }
-  app = apps.find(a => a.uid === selectId) || apps.find(a => a.status !== "draft") || apps[0] || null;
+  apps = apps.filter(a => a.status && a.status !== "draft");
+  app = apps.find(a => a.uid === selectId) || apps[0] || null;
   show(section);
 }
 
@@ -331,12 +332,8 @@ function show(sec) {
   if (location.hash.slice(1) !== sec) history.replaceState(null, "", "#" + sec);
   renderMenu();
   window.scrollTo({ top: 0 });
-  if (sec === "application") {
-    if (!app) return renderWelcome();
-    if (app.status === "draft") return renderForm();
-    return renderApplication();
-  }
   if (!submitted()) return renderNotYet(sec);
+  if (sec === "application") return renderApplication();
   if (sec === "status") return renderStatusSec();
   if (sec === "letter") return renderLetter();
   if (sec === "disbursement") return renderDisbursement();
@@ -351,7 +348,7 @@ scrim.addEventListener("click", closeMenu);
 function pageHead(title, sub) {
   return `<div class="p-head">
     <div><h1>${title}</h1>${sub ? `<p class="muted">${sub}</p>` : ""}</div>
-    ${submitted() ? `<div class="p-head-right"><span class="small muted">${esc(app.data.companyName || "")} · ${esc(app.applicationId || "")}</span><span class="badge badge-${esc(app.status)}">${esc(STATUS[app.status] || app.status)}</span></div>` : ""}
+    ${submitted() ? `<div class="p-head-right"><span class="sub-chip">✓ Submitted ${esc(fmtDate(app.submittedAt))}</span><span class="small muted">${esc(app.applicationId || "")}</span><span class="badge badge-${esc(app.status)}">${esc(STATUS[app.status] || app.status)}</span></div>` : ""}
   </div>
   ${apps.filter(x => x.status !== "draft").length > 1 ? `<div class="field" style="max-width:420px"><label for="appSel">Viewing application</label><select id="appSel">${apps.filter(x => x.status !== "draft").map(x => `<option value="${esc(x.uid)}"${x === app ? " selected" : ""}>${esc(x.data?.companyName || "Application")} · ${esc(x.applicationId || "")}</option>`).join("")}</select></div>` : ""}`;
 }
@@ -390,12 +387,25 @@ function disbGuide() {
 }
 const emptyKpis = labels => `<div class="p-cards">${labels.map(l => `<div class="p-kpi"><span>${l}</span><b class="muted" style="color:var(--muted)">—</b></div>`).join("")}</div>`;
 function notSubmittedBar() {
-  return `<div class="alert alert-info" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-    <span>${app ? "Your application is still a draft and hasn't been submitted." : "You haven't started an application yet."}</span>
-    <button class="btn btn-apply btn-sm" id="goApp">${app ? "Continue application" : "Start application"}</button></div>`;
+  return `<div class="alert alert-warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <span>We couldn't find an application linked to <b>${esc(user.email)}</b>.</span>
+    <a class="btn btn-outline btn-sm" href="mailto:${esc(site.email)}?subject=${encodeURIComponent("Application not showing – " + user.email)}">Contact us</a></div>`;
+}
+function noRecordPanel() {
+  return `<div class="p-empty" style="max-width:none;margin-bottom:20px">
+    <div class="p-empty-ic">?</div>
+    <h2>No application found for this login</h2>
+    <p class="muted" style="max-width:560px;margin:0 auto 6px">Applications are recorded by the programme team. If you applied using a different email address, please log out and log in with that email.</p>
+    <p class="muted" style="max-width:560px;margin:0 auto 16px">If you believe this is a mistake, write to us and we'll link your application to this login.</p>
+    <a class="btn btn-primary" href="mailto:${esc(site.email)}?subject=${encodeURIComponent("Application not showing – " + user.email)}">Contact ${esc(site.email)}</a>
+  </div>`;
 }
 
 function renderNotYet(sec) {
+  if (sec === "application") {
+    root.innerHTML = `${pageHead("Application Applied", "Your application details appear here once linked to your login.")}${noRecordPanel()}`;
+    return;
+  }
   if (sec === "status") {
     root.innerHTML = `${pageHead("Status of Application", "Track every stage of your application here.")}
       ${notSubmittedBar()}
@@ -412,7 +422,6 @@ function renderNotYet(sec) {
       ${emptyKpis(["Sanctioned", "Released", "Yet to be released", "Next tranche"])}
       ${disbGuide()}`;
   }
-  root.querySelector("#goApp").addEventListener("click", () => show("application"));
 }
 
 // 1. Application Applied
@@ -420,13 +429,31 @@ function renderApplication() {
   const a = app;
   const defs = STEPS.find(s => s.id === "documents").docs;
   const editDocs = a.status === "documents_pending";
-  root.innerHTML = `${pageHead("Application Applied", `Submitted on ${esc(fmt(a.submittedAt))}`)}
-    <div class="p-cards">
-      <div class="p-kpi"><span>Application ID</span><b>${esc(a.applicationId || "—")}</b></div>
-      <div class="p-kpi"><span>Company</span><b>${esc(a.data.companyName || "—")}</b></div>
-      <div class="p-kpi"><span>Amount requested</span><b>${esc(money(a.data.amountAsked) || "—")}</b></div>
-      <div class="p-kpi"><span>Current status</span><b>${esc(STATUS[a.status] || a.status)}</b></div>
-    </div>
+  const d = a.data;
+  root.innerHTML = `${pageHead("Application Applied", "Your application has been received by the programme team.")}
+    <section class="ack-card" id="ackCard">
+      <div class="ack-top">
+        <div class="ack-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+        <div>
+          <div class="ack-eyebrow">Acknowledgement</div>
+          <h2>Application Submitted Successfully</h2>
+          <p>Your application has been received and recorded under the Seed Funding Programme. Please quote your Application ID in all communication.</p>
+        </div>
+        <img class="ack-seal" src="assets/img/logo.svg" alt="" width="70" height="70">
+      </div>
+      <div class="ack-grid">
+        <div><span>Application ID</span><b class="ack-id">${esc(a.applicationId || "—")}</b></div>
+        <div><span>Submitted on</span><b>${esc(fmtDate(a.submittedAt))}</b></div>
+        <div><span>Applicant</span><b>${esc(d.founderName || "—")}</b></div>
+        <div><span>Company</span><b>${esc(d.companyName || "—")}</b></div>
+        <div><span>Amount requested</span><b>${esc(money(d.amountAsked) || "—")}</b></div>
+        <div><span>Current status</span><b><span class="badge badge-${esc(a.status)}">${esc(STATUS[a.status] || a.status)}</span></b></div>
+      </div>
+      <div class="ack-foot no-print">
+        <button class="btn btn-outline btn-sm" id="printAck">Download acknowledgement</button>
+        <button class="btn btn-ghost btn-sm" id="goStatus">View status →</button>
+      </div>
+    </section>
     <section class="panel" style="margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="font-size:1.1rem;margin:0">Documents</h2>${editDocs ? '<span class="badge badge-documents_pending">Update requested</span>' : ""}</div>
       ${editDocs ? `<div class="alert alert-warn" style="margin-top:14px">The programme team has asked for updated documents. Update the links below and submit.</div>${DOC_HELP}
@@ -436,13 +463,15 @@ function renderApplication() {
     </section>
     <section class="panel">
       <h2 style="font-size:1.1rem">Application details</h2>
-      <p class="small muted">The application is locked for review. For corrections, email <a href="mailto:${esc(site.email)}">${esc(site.email)}</a> quoting your Application ID.</p>
+      <p class="small muted">For corrections, email <a href="mailto:${esc(site.email)}">${esc(site.email)}</a> quoting your Application ID.</p>
       ${STEPS.filter(s => s.id !== "review" && s.id !== "documents").map(s => {
-        const rows = flatFields(s).filter(f => a.data[f.k] !== undefined && a.data[f.k] !== "").map(f => `<tr><th>${esc(f.label)}</th><td>${esc(MONEY.has(f.k) ? money(a.data[f.k]) : a.data[f.k])}</td></tr>`).join("");
+        const rows = flatFields(s).filter(f => a.data[f.k] !== undefined && a.data[f.k] !== "").map(f => `<tr><th>${esc(f.label)}</th><td>${esc(MONEY.has(f.k) ? money(a.data[f.k]) : f.type === "date" ? fmtDate(a.data[f.k] + "T00:00:00") : a.data[f.k])}</td></tr>`).join("");
         return rows ? `<div class="summary-group"><h3>${esc(s.title)}</h3><table class="summary-table">${rows}</table></div>` : "";
       }).join("") || '<p class="muted">Details were recorded by the programme team.</p>'}
     </section>`;
   bindAppSel();
+  root.querySelector("#printAck").addEventListener("click", () => { document.body.classList.add("print-ack"); window.print(); setTimeout(() => document.body.classList.remove("print-ack"), 500); });
+  root.querySelector("#goStatus").addEventListener("click", () => show("status"));
   if (editDocs) {
     const docs = JSON.parse(JSON.stringify(a.docs || {}));
     bindLinks(docs, () => {});

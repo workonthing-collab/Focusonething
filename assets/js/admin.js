@@ -13,7 +13,12 @@ const STAGES = ["Idea", "Prototype / MVP", "Early revenue", "Scaling"];
 const REC = [
   { k: "companyName", label: "Registered company name", req: true },
   { k: "brandName", label: "Brand / product name" },
+  { k: "entityType", label: "Entity type", type: "select", options: ["Private Limited Company", "Limited Liability Partnership (LLP)", "Registered Partnership"] },
+  { k: "regNumber", label: "CIN / LLPIN / Registration no." },
+  { k: "incDate", label: "Date of incorporation", type: "date" },
+  { k: "website", label: "Website", type: "url" },
   { k: "founderName", label: "Founder name", req: true },
+  { k: "founderRole", label: "Founder designation" },
   { k: "founderEmail", label: "Founder email (they log in with this)", type: "email", req: true },
   { k: "founderPhone", label: "Founder mobile", type: "tel" },
   { k: "sector", label: "Sector", type: "select", options: SECTORS },
@@ -21,8 +26,11 @@ const REC = [
   { k: "state", label: "State", type: "select", options: STATES },
   { k: "city", label: "City" },
   { k: "amountAsked", label: "Amount requested (₹)", type: "number" },
-  { k: "oneLiner", label: "One-line description" }
+  { k: "supportType", label: "Preferred funding instrument", type: "select", options: ["Grant", "Equity", "Convertible instrument", "Debt", "Not sure"] },
+  { k: "oneLiner", label: "One-line description" },
+  { k: "useOfFunds", label: "Use of funds" }
 ];
+const REC_DOCS = [["incCert", "Certificate of incorporation link"], ["pitchDeck", "Pitch deck link"], ["companyPan", "Company PAN link"], ["financials", "Financials link"]];
 const CRITERIA = [
   ["team", "Team & founder fit"], ["problem", "Problem clarity"], ["solution", "Solution & innovation"],
   ["market", "Market size"], ["model", "Business model"], ["traction", "Traction"]
@@ -580,7 +588,7 @@ function renderEdit(uid) {
   const a = uid ? apps.find(x => x.uid === uid) : null;
   if (uid && !a) { location.hash = ""; return; }
   const d = a?.data || {};
-  const today = new Date().toISOString().slice(0, 10);
+  const _n = new Date(), today = `${_n.getFullYear()}-${String(_n.getMonth() + 1).padStart(2, "0")}-${String(_n.getDate()).padStart(2, "0")}`;
   const field = f => {
     const v = esc(d[f.k] ?? "");
     const lab = `<label for="e-${f.k}">${esc(f.label)}${f.req ? ' <span class="req">*</span>' : ""}</label>`;
@@ -591,6 +599,9 @@ function renderEdit(uid) {
   };
   const pairs = [];
   for (let i = 0; i < REC.length; i += 2) pairs.push(`<div class="field-row">${field(REC[i])}${REC[i + 1] ? field(REC[i + 1]) : "<div></div>"}</div>`);
+  const docs = a?.docs || {};
+  pairs.push(`<h3 style="font-size:1rem;margin:10px 0 12px">Document links (optional)</h3>`);
+  for (let i = 0; i < REC_DOCS.length; i += 2) pairs.push(`<div class="field-row">${REC_DOCS.slice(i, i + 2).map(([k, l]) => `<div class="field"><label for="ed-${k}">${l}</label><input id="ed-${k}" data-ed="${k}" type="url" value="${esc(docs[k]?.url || "")}" placeholder="https://drive.google.com/..."></div>`).join("")}</div>`);
   root.innerHTML = `
     <p style="margin:0 0 12px"><a href="${a ? `#app=${encodeURIComponent(uid)}` : "admin.html"}" class="small">← ${a ? "Back to startup" : "All startups"}</a></p>
     <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>${a ? "Edit startup" : "Add startup"}</h1></div></div>
@@ -608,6 +619,10 @@ function renderEdit(uid) {
   root.querySelector("#saveRec").addEventListener("click", async e => {
     const data = { ...(a?.data || {}) };
     root.querySelectorAll("[data-e]").forEach(el => { data[el.dataset.e] = el.value.trim(); });
+    const docsOut = { ...(a?.docs || {}) };
+    let badLink = false;
+    root.querySelectorAll("[data-ed]").forEach(el => { const v = el.value.trim(); if (v && !/^https?:\/\/\S+\.\S+/.test(v)) badLink = true; if (v) docsOut[el.dataset.ed] = { url: v, name: v, addedAt: new Date().toISOString() }; else delete docsOut[el.dataset.ed]; });
+    if (badLink) { toast("Document links must start with https://"); return; }
     data.founderEmail = (data.founderEmail || "").toLowerCase();
     const missing = REC.filter(f => f.req && !data[f.k]).map(f => f.label);
     if (missing.length) { toast("Required: " + missing.join(", ")); return; }
@@ -618,7 +633,7 @@ function renderEdit(uid) {
     e.target.disabled = true;
     try {
       if (a) {
-        const patch = { data, founderEmail: data.founderEmail, applicationId, submittedAt };
+        const patch = { data, docs: docsOut, founderEmail: data.founderEmail, applicationId, submittedAt };
         await store.updateApplication(uid, patch);
         await store.addAudit({ appId: uid, applicationId, action: "edit", by: user.email });
         Object.assign(a, patch);
@@ -626,7 +641,7 @@ function renderEdit(uid) {
         location.hash = "app=" + encodeURIComponent(uid);
       } else {
         const status = root.querySelector("#e-status").value;
-        const rec = { data, founderEmail: data.founderEmail, applicationId, submittedAt, status,
+        const rec = { data, docs: docsOut, founderEmail: data.founderEmail, applicationId, submittedAt, status,
           timeline: [{ status: "submitted", at: submittedAt, by: user.email }].concat(status !== "submitted" ? [{ status, at: new Date().toISOString(), by: user.email }] : []),
           messages: [], assignedTo: [] };
         const id = await store.createApplication(rec);

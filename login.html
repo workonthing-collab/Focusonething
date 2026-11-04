@@ -28,7 +28,7 @@
       </div>
       <div class="auth-tabs" role="tablist">
         <button type="button" data-tab="login" class="active">Applicant Login</button>
-        <button type="button" data-tab="signup">Register to Apply</button>
+        <button type="button" data-tab="signup">Register</button>
       </div>
 
       <div id="msg"></div>
@@ -36,7 +36,7 @@
       <!-- Login -->
       <form id="loginForm" novalidate>
         <h2 style="font-size:1.3rem">Welcome back</h2>
-        <p class="muted small">Log in to continue your application or track its status.</p>
+        <p class="muted small">Log in to view your application status.</p>
         <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="li-pw">Password</label><input id="li-pw" type="password" autocomplete="current-password" required></div>
         <button class="btn btn-primary" style="width:100%" type="submit">Log in</button>
@@ -45,8 +45,8 @@
 
       <!-- Signup -->
       <form id="signupForm" class="hidden" novalidate>
-        <h2 style="font-size:1.3rem">Register to apply</h2>
-        <p class="muted small">Use an email you check regularly. We'll send a link to verify it, and all updates about your application go there.</p>
+        <h2 style="font-size:1.3rem">Register to track your application</h2>
+        <p class="muted small">Use the <b>same email you applied with</b>. We'll send a link to verify it, and your application will appear automatically.</p>
         <div class="field"><label for="su-name">Founder's full name</label><input id="su-name" type="text" autocomplete="name" required></div>
         <div class="field"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="su-pw">Password</label><input id="su-pw" type="password" autocomplete="new-password" minlength="8" required><p class="hint">At least 8 characters.</p></div>
@@ -55,7 +55,7 @@
           <input id="su-terms" type="checkbox" style="margin-top:5px">
           <label for="su-terms" style="font-weight:400;font-size:.85rem">I confirm this is my own email address, and I agree to the <a href="terms.html" target="_blank">Terms</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>. I understand that applying does not guarantee funding.</label>
         </div>
-        <button class="btn btn-apply" style="width:100%" type="submit">Register</button>
+        <button class="btn btn-apply" style="width:100%" type="submit">Create login</button>
       </form>
     </div>
   </main>
