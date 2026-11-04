@@ -3,6 +3,7 @@ import "./common.js";
 import { toast, esc } from "./common.js";
 import { store, friendlyError } from "./store.js";
 import { mailStatus, mailEnabled } from "./mail.js";
+import { letterHTML } from "./letter.js";
 import { STEPS, STATUS, STATES, SECTORS, ADMIN_STATUSES, STAGES as PSTAGES, stageIndex, flatFields, MONEY, money } from "./schema.js";
 
 const root = document.getElementById("root");
@@ -319,7 +320,7 @@ async function renderDetail(uid) {
     if (!box) return;
     const label = e => e.action === "status" ? `Status: ${STATUS[e.from] || e.from || "—"} → ${STATUS[e.to] || e.to}${e.remark ? ` (remark: "${e.remark}")` : ""}`
       : e.action === "message" ? "Message sent to applicant" : e.action === "assign" ? `Reviewers set: ${(e.reviewers || []).join(", ") || "none"}`
-      : e.action === "funding" ? "Funding details updated" : e.action === "create" ? "Record created by programme team" : e.action === "edit" ? "Application details edited" : e.action;
+      : e.action === "funding" ? "Funding details updated" : e.action === "letter_issue" ? `Approval letter issued (${e.refNo || ""})` : e.action === "letter_update" ? "Approval letter updated" : e.action === "letter_withdraw" ? "Approval letter withdrawn" : e.action === "create" ? "Record created by programme team" : e.action === "edit" ? "Application details edited" : e.action;
     box.innerHTML = list.length ? `<ul class="notif">${list.map(e => `<li><b style="font-size:.85rem">${esc(label(e))}</b><time>${esc(e.by || "")} · ${fmtDT(e.at)}</time></li>`).join("")}</ul>` : "No administrative actions recorded yet.";
   }).catch(() => { const box = root.querySelector("#auditBox"); if (box) box.textContent = "Couldn't load the audit trail."; });
 
@@ -413,7 +414,7 @@ function fundingHTML(a, progress) {
     <h2 style="font-size:1.1rem">Funding &amp; tranches</h2>
     <div class="field-row">
       <div class="field"><label for="fSanc">Sanctioned amount (₹)</label><input id="fSanc" type="number" min="0" value="${esc(f.sanctioned ?? D(a).amountAsked ?? "")}"></div>
-      <div class="field"><label for="fInst">Instrument</label><select id="fInst">${["Seed grant", "Equity investment", "Convertible note / debenture", "Debt", "Mentorship & services only"].map(o => `<option${(f.instrument || D(a).supportType) === o ? " selected" : ""}>${o}</option>`).join("")}</select></div>
+      <div class="field"><label for="fInst">Instrument</label><select id="fInst">${(() => { const opts = ["Grant", "Equity", "Convertible instrument", "Debt"]; const cur = f.instrument || (opts.includes(D(a).supportType) ? D(a).supportType : ""); if (cur && !opts.includes(cur)) opts.push(cur); return `<option value="">Select…</option>` + opts.map(o => `<option${cur === o ? " selected" : ""}>${o}</option>`).join(""); })()}</select></div>
     </div>
     <div class="field-row">
       <div class="field"><label for="fAgr">Agreement date</label><input id="fAgr" type="date" value="${esc(f.agreementDate || "")}"></div>
@@ -425,7 +426,37 @@ function fundingHTML(a, progress) {
       <button class="btn btn-outline btn-sm" id="addTr">+ Add tranche</button>
       <button class="btn btn-primary btn-sm" id="saveFund">Save funding</button>
     </div>
-    <p class="hint">The founder sees this on their dashboard, including the sanctioned amount, tranches, milestones, release dates and reference numbers.</p>
+    <p class="hint">The founder sees this under Disbursement Status, including the sanctioned amount, tranches, milestones, release dates and reference numbers.</p>
+  </div>
+  ${letterPanelHTML(a)}`;
+}
+
+function letterPanelHTML(a) {
+  const f = a.funding || {}, L = f.letter || {};
+  const now = new Date(), today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const defRef = `SFS/APL/${new Date().getFullYear()}/${(a.applicationId || "").split("-").pop() || ""}`;
+  return `<div class="panel" style="margin-bottom:24px" id="letterPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2 style="font-size:1.1rem;margin:0">Approval letter</h2>
+      ${L.issuedAt ? `<span class="badge badge-selected">Issued ${fmtDate(L.issuedAt)}</span>` : '<span class="badge badge-draft">Not issued</span>'}
+    </div>
+    <p class="hint" style="margin:6px 0 14px">Uses the sanctioned amount, instrument and tranches saved above. Save funding first. The founder sees the letter under Approval Letter and can print it or save it as PDF.</p>
+    <div class="field-row">
+      <div class="field"><label for="lRef">Reference no.</label><input id="lRef" value="${esc(L.refNo || defRef)}"></div>
+      <div class="field"><label for="lDate">Letter date</label><input id="lDate" type="date" value="${esc(L.date || today)}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="lSign">Signatory name <span class="req">*</span></label><input id="lSign" value="${esc(L.signatory || "")}"></div>
+      <div class="field"><label for="lDesig">Signatory designation <span class="req">*</span></label><input id="lDesig" value="${esc(L.designation || "")}" placeholder="e.g. Programme Director"></div>
+    </div>
+    <div class="field"><label for="lCond">Conditions (one per line, optional)</label><textarea id="lCond" style="min-height:90px" placeholder="Funds to be used only for the purposes stated in the application&#10;Quarterly progress and utilisation reports to be submitted">${esc(L.conditions || "")}</textarea></div>
+    <div class="field"><label for="lLink">Link to signed / stamped copy (optional)</label><input id="lLink" type="url" value="${esc(L.signedLink || "")}" placeholder="https://drive.google.com/..."></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" id="lPreview">Preview</button>
+      <button class="btn btn-primary btn-sm" id="lIssue">${L.issuedAt ? "Update letter" : "Issue letter"}</button>
+      ${L.issuedAt ? '<button class="btn btn-ghost btn-sm" id="lWithdraw">Withdraw letter</button>' : ""}
+    </div>
+    <div id="letterPreview" class="letter-wrap hidden" style="margin-top:18px"></div>
   </div>`;
 }
 
@@ -450,12 +481,50 @@ function bindFunding(a, uid) {
   root.querySelector("#saveFund").addEventListener("click", async e => {
     e.target.disabled = true;
     const funding = {
+      ...(a.funding || {}),
       sanctioned: root.querySelector("#fSanc").value, instrument: root.querySelector("#fInst").value,
       agreementDate: root.querySelector("#fAgr").value,
       tranches: read().filter(t => t.label || t.amount).map(t => ({ ...t, amount: t.amount === "" ? "" : +t.amount }))
     };
     try { await store.updateApplication(uid, { funding }); await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: "funding", sanctioned: funding.sanctioned, by: user.email }); a.funding = funding; toast("Funding saved"); renderDetail(uid); }
     catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
+  });
+
+  const readLetter = () => ({
+    refNo: root.querySelector("#lRef").value.trim(), date: root.querySelector("#lDate").value,
+    signatory: root.querySelector("#lSign").value.trim(), designation: root.querySelector("#lDesig").value.trim(),
+    conditions: root.querySelector("#lCond").value.trim(), signedLink: root.querySelector("#lLink").value.trim()
+  });
+  root.querySelector("#lPreview").addEventListener("click", () => {
+    const box = root.querySelector("#letterPreview");
+    const draft = { ...a, funding: { ...(a.funding || {}), letter: { ...(a.funding?.letter || {}), ...readLetter() } } };
+    box.innerHTML = letterHTML(draft);
+    box.classList.toggle("hidden");
+  });
+  root.querySelector("#lIssue").addEventListener("click", async e => {
+    const L = readLetter();
+    if (!(+a.funding?.sanctioned > 0)) { toast("Save the sanctioned amount first"); return; }
+    if (!a.funding?.instrument) { toast("Select and save the funding instrument first"); return; }
+    if (!L.signatory || !L.designation) { toast("Signatory name and designation are required"); return; }
+    if (L.signedLink && !/^https?:\/\/\S+\.\S+/.test(L.signedLink)) { toast("Signed copy link must start with https://"); return; }
+    e.target.disabled = true;
+    const prev = a.funding.letter;
+    const letter = { ...L, issuedAt: prev?.issuedAt || new Date().toISOString(), updatedAt: new Date().toISOString(), by: user.email };
+    const funding = { ...a.funding, letter };
+    try {
+      await store.updateApplication(uid, { funding });
+      await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: prev?.issuedAt ? "letter_update" : "letter_issue", refNo: L.refNo, by: user.email });
+      a.funding = funding; toast(prev?.issuedAt ? "Letter updated" : "Approval letter issued"); renderDetail(uid);
+    } catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
+  });
+  root.querySelector("#lWithdraw")?.addEventListener("click", async e => {
+    if (e.target.dataset.confirm !== "1") { e.target.dataset.confirm = "1"; e.target.textContent = "Click again to withdraw"; return; }
+    const funding = { ...a.funding }; delete funding.letter;
+    try {
+      await store.updateApplication(uid, { funding });
+      await store.addAudit({ appId: uid, applicationId: a.applicationId || "", action: "letter_withdraw", by: user.email });
+      a.funding = funding; toast("Letter withdrawn"); renderDetail(uid);
+    } catch (err) { toast(friendlyError(err)); }
   });
 }
 

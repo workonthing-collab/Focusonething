@@ -6,16 +6,18 @@ import { store, friendlyError } from "./store.js";
 import { site } from "./config.js";
 import { mailSubmitted } from "./mail.js";
 import { STEPS, STATUS, STAGES, stageIndex, flatFields, MONEY, money } from "./schema.js";
+import { letterHTML } from "./letter.js";
 
 const root = document.getElementById("root");
 let user = null;
 let apps = [];          // all records visible to this applicant
 let app = null;         // current record
-let tab = "overview";
+const SECTIONS = ["application", "status", "letter", "disbursement"];
+let section = SECTIONS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "application";
 let stepIdx = 0, dirty = false, saveTimer = null;
 
 const val = k => app.data?.[k] ?? "";
-const show = k => MONEY.has(k) ? money(val(k)) : val(k);
+const showVal = k => MONEY.has(k) ? money(val(k)) : val(k);
 const isLink = v => /^https?:\/\/\S+\.\S+/.test(v || "");
 const fmt = d => d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -29,17 +31,11 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
 });
 window.addEventListener("beforeunload", e => { if (dirty) { save(true); e.preventDefault(); } });
 
-store.onUser(async u => {
-  if (!u) { location.replace("login.html"); return; }
-  if (user && user.uid === u.uid && user.verified === u.verified) return;
-  user = u;
-  document.getElementById("userEmail").textContent = u.email;
-  if (!store.demo && !u.verified) return renderVerify();
-  await load();
-});
+
 
 // ── Email verification gate ───────────────────────────────────
 function renderVerify() {
+  renderMenu(true);
   root.innerHTML = `
     <div class="panel" style="max-width:580px;margin:40px auto;text-align:center">
       <h2>Verify your email to continue</h2>
@@ -78,10 +74,9 @@ async function load(selectId) {
 
   if (!apps.length) {
     try { if (!store.demo && await store.getRole(user.uid)) { location.replace("admin.html"); return; } } catch {}
-    return renderWelcome();
   }
-  app = apps.find(a => a.uid === selectId) || apps.find(a => a.status !== "draft") || apps[0];
-  app.status === "draft" ? renderForm() : renderStatus();
+  app = apps.find(a => a.uid === selectId) || apps.find(a => a.status !== "draft") || apps[0] || null;
+  show(section);
 }
 
 function newDraft() {
@@ -102,7 +97,7 @@ function renderWelcome() {
       </div>
       <button class="btn btn-apply btn-lg" id="startBtn">Start application</button>
     </div>`;
-  root.querySelector("#startBtn").addEventListener("click", () => { app = newDraft(); apps = [app]; stepIdx = 0; renderForm(); });
+  root.querySelector("#startBtn").addEventListener("click", () => { app = newDraft(); apps = [app]; stepIdx = 0; renderMenu(); renderForm(); });
 }
 
 // ── Draft saving ──────────────────────────────────────────────
@@ -270,7 +265,7 @@ function reviewHTML() {
   const incomplete = STEPS.filter(s => s.id !== "review" && !stepComplete(s));
   const groups = STEPS.filter(s => s.id !== "review").map((s, i) => {
     const docRows = (s.docs || []).map(d => `<tr><th>${esc(d.label)}</th><td>${app.docs[d.k] ? `<a href="${esc(app.docs[d.k].url)}" target="_blank" rel="noopener">Open link</a>` : '<span class="muted">Not provided</span>'}</td></tr>`);
-    const rows = flatFields(s).map(f => `<tr><th>${esc(f.label)}</th><td>${esc(show(f.k)) || '<span class="muted">—</span>'}</td></tr>`);
+    const rows = flatFields(s).map(f => `<tr><th>${esc(f.label)}</th><td>${esc(showVal(f.k)) || '<span class="muted">—</span>'}</td></tr>`);
     return `<div class="summary-group"><h3>${esc(s.title)} <button type="button" class="link-btn" data-edit="${i}">Edit</button></h3><table class="summary-table">${docRows.join("")}${rows.join("")}</table></div>`;
   }).join("");
   return `
@@ -298,15 +293,128 @@ async function submit() {
   app.applicationId ||= "SFS-" + new Date().getFullYear() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase();
   app.submittedAt = now;
   app.timeline = [{ status: "submitted", at: now, by: "applicant" }];
-  if (await save(true)) { toast("Application submitted"); tab = "overview"; renderStatus(); mailSubmitted(app); }
+  if (await save(true)) { toast("Application submitted"); renderMenu(); show("status"); mailSubmitted(app); }
   else { Object.assign(app, prev); btn.disabled = false; btn.textContent = "Submit application"; }
 }
 
-// ── Status dashboard ──────────────────────────────────────────
+// ── Portal shell: left menu with four sections ────────────────
+const submitted = () => app && app.status !== "draft";
+const isSelected = () => app && app.status === "selected";
+const letterIssued = () => isSelected() && app.funding?.letter?.issuedAt;
+
+function renderMenu(locked = false) {
+  const n = submitted() ? unread(app) : 0;
+  const tr = app?.funding?.tranches || [];
+  const items = [
+    ["application", "Application Applied", '<path d="M6 3h9l3 3v15H6z"/><path d="M9 11h6M9 15h6M9 7h3"/>', submitted() ? `<span class="p-pill">${esc(app.applicationId || "")}</span>` : (app ? '<span class="p-pill warn">Draft</span>' : "")],
+    ["status", "Status of Application", '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', submitted() ? `${n ? `<span class="p-dot">${n}</span>` : ""}` : ""],
+    ["letter", "Approval Letter", '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 7l8 6 8-6"/>', letterIssued() ? '<span class="p-pill ok">Issued</span>' : ""],
+    ["disbursement", "Disbursement Status", '<path d="M3 7h18v10H3z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/>', tr.some(t => t.status === "released") ? '<span class="p-pill ok">Active</span>' : ""]
+  ];
+  document.getElementById("menu").innerHTML = items.map(([k, label, icon, extra], i) => `
+    <a href="#${k}" class="p-item${section === k ? " active" : ""}${locked ? " disabled" : ""}" data-sec="${k}" ${section === k ? 'aria-current="page"' : ""}>
+      <span class="p-num">${i + 1}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>
+      <span class="p-label">${label}</span>${extra}
+    </a>`).join("");
+  document.querySelectorAll("[data-sec]").forEach(a => a.addEventListener("click", e => {
+    e.preventDefault();
+    if (locked) return;
+    closeMenu();
+    show(a.dataset.sec);
+  }));
+}
+
+function show(sec) {
+  if (dirty) save(true);
+  section = sec;
+  if (location.hash.slice(1) !== sec) history.replaceState(null, "", "#" + sec);
+  renderMenu();
+  window.scrollTo({ top: 0 });
+  if (sec === "application") {
+    if (!app) return renderWelcome();
+    if (app.status === "draft") return renderForm();
+    return renderApplication();
+  }
+  if (!submitted()) return renderNotYet(sec);
+  if (sec === "status") return renderStatusSec();
+  if (sec === "letter") return renderLetter();
+  if (sec === "disbursement") return renderDisbursement();
+}
+
+// Mobile drawer
+const side = document.getElementById("side"), scrim = document.getElementById("scrim"), menuBtn = document.getElementById("menuBtn");
+function closeMenu() { side.classList.remove("open"); scrim.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false"); }
+menuBtn.addEventListener("click", () => { const o = side.classList.toggle("open"); scrim.classList.toggle("open", o); menuBtn.setAttribute("aria-expanded", o); });
+scrim.addEventListener("click", closeMenu);
+
+function pageHead(title, sub) {
+  return `<div class="p-head">
+    <div><h1>${title}</h1>${sub ? `<p class="muted">${sub}</p>` : ""}</div>
+    ${submitted() ? `<div class="p-head-right"><span class="small muted">${esc(app.data.companyName || "")} · ${esc(app.applicationId || "")}</span><span class="badge badge-${esc(app.status)}">${esc(STATUS[app.status] || app.status)}</span></div>` : ""}
+  </div>
+  ${apps.filter(x => x.status !== "draft").length > 1 ? `<div class="field" style="max-width:420px"><label for="appSel">Viewing application</label><select id="appSel">${apps.filter(x => x.status !== "draft").map(x => `<option value="${esc(x.uid)}"${x === app ? " selected" : ""}>${esc(x.data?.companyName || "Application")} · ${esc(x.applicationId || "")}</option>`).join("")}</select></div>` : ""}`;
+}
+function bindAppSel() { root.querySelector("#appSel")?.addEventListener("change", e => { app = apps.find(x => x.uid === e.target.value); show(section); }); }
+
+function renderNotYet(sec) {
+  const t = { status: "Status of Application", letter: "Approval Letter", disbursement: "Disbursement Status" }[sec];
+  root.innerHTML = `${pageHead(t)}
+    <div class="p-empty">
+      <div class="p-empty-ic">!</div>
+      <h2>No submitted application yet</h2>
+      <p class="muted">${app ? "Your application is still a draft. Complete and submit it to see this section." : "Start your application to see this section."}</p>
+      <button class="btn btn-apply" id="goApp">${app ? "Continue application" : "Start application"}</button>
+    </div>`;
+  root.querySelector("#goApp").addEventListener("click", () => show("application"));
+}
+
+// 1. Application Applied
+function renderApplication() {
+  const a = app;
+  const defs = STEPS.find(s => s.id === "documents").docs;
+  const editDocs = a.status === "documents_pending";
+  root.innerHTML = `${pageHead("Application Applied", `Submitted on ${esc(fmt(a.submittedAt))}`)}
+    <div class="p-cards">
+      <div class="p-kpi"><span>Application ID</span><b>${esc(a.applicationId || "—")}</b></div>
+      <div class="p-kpi"><span>Company</span><b>${esc(a.data.companyName || "—")}</b></div>
+      <div class="p-kpi"><span>Amount requested</span><b>${esc(money(a.data.amountAsked) || "—")}</b></div>
+      <div class="p-kpi"><span>Current status</span><b>${esc(STATUS[a.status] || a.status)}</b></div>
+    </div>
+    <section class="panel" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="font-size:1.1rem;margin:0">Documents</h2>${editDocs ? '<span class="badge badge-documents_pending">Update requested</span>' : ""}</div>
+      ${editDocs ? `<div class="alert alert-warn" style="margin-top:14px">The programme team has asked for updated documents. Update the links below and submit.</div>${DOC_HELP}
+        <div id="docEdit">${defs.map(d => docHTML(d, a.docs[d.k])).join("")}</div>
+        <div class="panel-actions"><span class="small muted">${a.docsUpdatedAt ? "Last updated " + esc(fmt(a.docsUpdatedAt)) : ""}</span><button class="btn btn-primary" id="docSubmit">Submit updated documents</button></div>`
+      : `<table class="summary-table" style="margin-top:12px">${defs.map(d => `<tr><th>${esc(d.label)}</th><td>${a.docs[d.k]?.url ? `<a href="${esc(a.docs[d.k].url)}" target="_blank" rel="noopener">Open document</a>` : '<span class="muted">Not provided</span>'}</td></tr>`).join("")}</table>`}
+    </section>
+    <section class="panel">
+      <h2 style="font-size:1.1rem">Application details</h2>
+      <p class="small muted">The application is locked for review. For corrections, email <a href="mailto:${esc(site.email)}">${esc(site.email)}</a> quoting your Application ID.</p>
+      ${STEPS.filter(s => s.id !== "review" && s.id !== "documents").map(s => {
+        const rows = flatFields(s).filter(f => a.data[f.k] !== undefined && a.data[f.k] !== "").map(f => `<tr><th>${esc(f.label)}</th><td>${esc(MONEY.has(f.k) ? money(a.data[f.k]) : a.data[f.k])}</td></tr>`).join("");
+        return rows ? `<div class="summary-group"><h3>${esc(s.title)}</h3><table class="summary-table">${rows}</table></div>` : "";
+      }).join("") || '<p class="muted">Details were recorded by the programme team.</p>'}
+    </section>`;
+  bindAppSel();
+  if (editDocs) {
+    const docs = JSON.parse(JSON.stringify(a.docs || {}));
+    bindLinks(docs, () => {});
+    root.querySelector("#docSubmit").addEventListener("click", async e => {
+      if (!validateDocs(defs, docs)) { toast("Please fix the highlighted links"); return; }
+      e.target.disabled = true;
+      try { const p = await store.updateMyDocs(a.uid, docs); Object.assign(a, { docs }, p); toast("Documents submitted. The team will review them."); show("application"); }
+      catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
+    });
+  }
+}
+
+// 2. Status of Application
 function events(a) {
-  const ev = (a.timeline || []).map(t => ({ at: t.at, kind: "status", status: t.status, text: t.remark || "", title: `Status changed to ${STATUS[t.status] || t.status}` }));
+  const ev = (a.timeline || []).map(t => ({ at: t.at, kind: "status", text: t.remark || "", title: `Status updated: ${STATUS[t.status] || t.status}` }));
   (a.messages || []).forEach(m => ev.push({ at: m.at, kind: "message", text: m.text, title: "Message from the programme team" }));
-  if (a.docsUpdatedAt) ev.push({ at: a.docsUpdatedAt, kind: "docs", title: "You updated your documents", own: true });
+  if (a.docsUpdatedAt) ev.push({ at: a.docsUpdatedAt, kind: "docs", title: "You submitted updated documents", own: true });
+  if (a.funding?.letter?.issuedAt && a.status === "selected") ev.push({ at: a.funding.letter.issuedAt, kind: "letter", title: "Approval letter issued" });
   return ev.filter(e => e.at).sort((x, y) => y.at.localeCompare(x.at));
 }
 const seenKey = a => "sfs_seen_" + (a.uid || a.applicationId);
@@ -320,7 +428,7 @@ function progressHTML(a) {
     if (i === idx && st === "selected") cls = "done";
     if (i === idx && st === "rejected") cls = "fail";
     if (i === idx && st === "documents_pending") cls = "warn";
-    const label = i === idx && (st === "documents_pending" || st === "rejected" || st === "selected") ? STATUS[st] : s.label;
+    const label = i === idx && ["documents_pending", "rejected", "selected"].includes(st) ? STATUS[st] : s.label;
     return `<li class="${cls}"><span class="dot">${cls === "done" ? "✓" : cls === "fail" ? "✕" : cls === "warn" ? "!" : i + 1}</span><span class="lbl">${esc(label)}</span></li>`;
   }).join("")}</ol>`;
 }
@@ -328,138 +436,101 @@ function progressHTML(a) {
 const NOTE = {
   submitted: "Your application has been received and is waiting for initial review.",
   initial_review: "Our team is screening your application and verifying your documents.",
-  documents_pending: "Some documents are missing or need to be updated. Please update them in the Documents tab.",
+  documents_pending: "Some documents are missing or need to be updated. Please update them under Application Applied.",
   under_evaluation: "Your application is being scored by the assigned reviewers.",
   under_review: "Your application is being scored by the assigned reviewers.",
   shortlisted: "Your application has been shortlisted. The programme team will contact you about the next step.",
-  selected: "Your startup has been selected. Funding terms will be shared and confirmed through a signed funding agreement.",
+  selected: "Congratulations! Your startup has been selected. See Approval Letter and Disbursement Status for details.",
   rejected: "Your application was not selected in this cycle. Thank you for applying."
 };
 
-function renderStatus() {
-  const a = app, d = a.data, st = a.status;
-  const n = unread(a);
+function renderStatusSec() {
+  const a = app, st = a.status;
+  const seen = LSget(seenKey(a), "");
+  const ev = events(a);
   const latestRemark = (a.timeline || []).slice().reverse().find(t => t.remark);
-  const tabs = [["overview", "Overview"], ["application", "Application"], ["documents", "Documents"], ["messages", `Messages${n ? ` <span class="count">${n}</span>` : ""}`], ["profile", "Profile"]];
-  root.innerHTML = `
-    ${apps.length > 1 ? `<div class="field" style="max-width:420px"><label for="appSel">Application</label><select id="appSel">${apps.map(x => `<option value="${esc(x.uid)}"${x === a ? " selected" : ""}>${esc(x.data?.companyName || "Application")} · ${esc(x.applicationId || "Draft")}</option>`).join("")}</select></div>` : ""}
-    <div class="dash-head">
-      <div>
-        <p class="small muted" style="margin:0 0 4px">Application ID · <b>${esc(a.applicationId || "—")}</b> · Submitted ${esc(fmtDate(a.submittedAt))}</p>
-        <h1>${esc(d.companyName || "Your application")}</h1>
-      </div>
-      <span class="badge badge-${esc(st)}">${esc(STATUS[st] || st)}</span>
+  root.innerHTML = `${pageHead("Status of Application", "Every update from the programme team appears here.")}
+    <section class="panel" style="margin-bottom:20px">${progressHTML(a)}</section>
+    <div class="alert ${st === "rejected" ? "alert-error" : st === "documents_pending" ? "alert-warn" : st === "selected" ? "alert-ok" : "alert-info"}">${esc(NOTE[st] || "")}</div>
+    ${st === "documents_pending" ? `<button class="btn btn-primary" id="goDocs" style="margin-bottom:18px">Update documents</button>` : ""}
+    ${latestRemark ? `<div class="remark"><span>Latest remark from the programme team · ${esc(fmt(latestRemark.at))}</span>${esc(latestRemark.remark)}</div>` : ""}
+    <section class="panel">
+      <h2 style="font-size:1.1rem">Updates &amp; messages</h2>
+      ${ev.length ? `<ul class="notif">${ev.map(e => `<li class="${!e.own && e.at > seen ? "new" : ""}"><b>${esc(e.title)}</b>${e.text ? `<p>${esc(e.text)}</p>` : ""}<time>${esc(fmt(e.at))}</time></li>`).join("")}</ul>` : '<p class="small muted">No updates yet.</p>'}
+    </section>`;
+  bindAppSel();
+  root.querySelector("#goDocs")?.addEventListener("click", () => show("application"));
+  markSeen(a);
+  renderMenu();
+}
+
+// 3. Approval Letter
+function renderLetter() {
+  const a = app;
+  if (!letterIssued()) {
+    const msg = a.status === "rejected" ? "An approval letter is issued only to selected startups."
+      : a.status === "selected" ? "Your startup has been selected. The approval letter will appear here as soon as it is issued by the programme team."
+      : "The approval letter is issued only after your application is selected. Track progress under Status of Application.";
+    root.innerHTML = `${pageHead("Approval Letter")}
+      <div class="p-empty"><div class="p-empty-ic">✉</div><h2>${a.status === "selected" ? "Letter being prepared" : "Not issued yet"}</h2><p class="muted">${msg}</p></div>`;
+    bindAppSel(); return;
+  }
+  const L = a.funding.letter;
+  root.innerHTML = `${pageHead("Approval Letter", `Issued on ${esc(fmtDate(L.issuedAt))}`)}
+    <div class="p-letter-actions no-print">
+      <button class="btn btn-primary" id="printLetter">Download / Print PDF</button>
+      ${L.signedLink ? `<a class="btn btn-outline" href="${esc(L.signedLink)}" target="_blank" rel="noopener">Signed copy</a>` : ""}
     </div>
-    <div class="panel" style="margin-bottom:20px">${progressHTML(a)}</div>
-    <nav class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? "active" : ""}" data-tab="${k}">${l}</button>`).join("")}</nav>
-    <section class="panel" id="tabPanel">${tabHTML(tab, a, latestRemark)}</section>`;
-  root.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { tab = b.dataset.tab; renderStatus(); }));
-  root.querySelector("#appSel")?.addEventListener("change", e => { app = apps.find(x => x.uid === e.target.value); tab = "overview"; app.status === "draft" ? renderForm() : renderStatus(); });
-  if (tab === "overview" || tab === "messages") markSeen(a);
-  bindTab(tab, a);
+    <div class="letter-wrap">${letterHTML(a)}</div>`;
+  bindAppSel();
+  root.querySelector("#printLetter").addEventListener("click", () => window.print());
 }
 
-function tabHTML(t, a, latestRemark) {
-  const st = a.status;
-  if (t === "overview") {
-    const ev = events(a).slice(0, 6), seen = LSget(seenKey(a), "");
-    return `
-      <div class="alert ${st === "rejected" ? "alert-error" : st === "documents_pending" ? "alert-warn" : st === "selected" ? "alert-ok" : "alert-info"}">${esc(NOTE[st] || "")}</div>
-      ${latestRemark ? `<div class="remark"><span>Latest remark from the programme team · ${esc(fmt(latestRemark.at))}</span>${esc(latestRemark.remark)}</div>` : ""}
-      ${st === "documents_pending" ? `<button class="btn btn-primary" data-tab-go="documents" style="margin-bottom:18px">Update documents</button>` : ""}
-      ${fundingHTML(a)}
-      <h2 style="font-size:1.1rem;margin-top:8px">Notifications</h2>
-      ${ev.length ? `<ul class="notif">${ev.map(e => `<li class="${!e.own && e.at > seen ? "new" : ""}"><b>${esc(e.title)}</b>${e.text ? `<p>${esc(e.text)}</p>` : ""}<time>${esc(fmt(e.at))}</time></li>`).join("")}</ul>` : '<p class="small muted">No notifications yet.</p>'}`;
-  }
-  if (t === "application") {
-    return `<p class="small muted">Submitted on ${esc(fmt(a.submittedAt))}. The application is locked for review. For corrections, email <a href="mailto:${esc(site.email)}">${esc(site.email)}</a> quoting your Application ID.</p>
-      ${STEPS.filter(s => s.id !== "review" && s.id !== "documents").map(s => {
-        const rows = flatFields(s).filter(f => a.data[f.k] !== undefined && a.data[f.k] !== "").map(f => `<tr><th>${esc(f.label)}</th><td>${esc(MONEY.has(f.k) ? money(a.data[f.k]) : a.data[f.k])}</td></tr>`).join("");
-        return rows ? `<div class="summary-group"><h3>${esc(s.title)}</h3><table class="summary-table">${rows}</table></div>` : "";
-      }).join("") || '<p class="muted">Details were recorded by the programme team.</p>'}`;
-  }
-  if (t === "documents") {
-    const defs = STEPS.find(s => s.id === "documents").docs;
-    if (a.status === "documents_pending") {
-      return `<div class="alert alert-warn">The programme team has asked for updated documents. Update the links below and click Submit.</div>${DOC_HELP}
-        <div id="docEdit">${defs.map(d => docHTML(d, a.docs[d.k])).join("")}</div>
-        <div class="panel-actions"><span class="small muted">${a.docsUpdatedAt ? "Last updated " + esc(fmt(a.docsUpdatedAt)) : ""}</span><button class="btn btn-primary" id="docSubmit">Submit updated documents</button></div>`;
-    }
-    return `<table class="summary-table">${defs.map(d => `<tr><th>${esc(d.label)}</th><td>${a.docs[d.k]?.url ? `<a href="${esc(a.docs[d.k].url)}" target="_blank" rel="noopener">Open document</a>` : '<span class="muted">Not provided</span>'}</td></tr>`).join("")}</table>
-      <p class="small muted" style="margin-top:14px">Documents can be updated only when the programme team requests it (status "Documents Pending"). Please keep your shared links accessible until a decision is made.</p>`;
-  }
-  if (t === "messages") {
-    const items = [...(a.messages || []).map(m => ({ at: m.at, text: m.text, kind: "Message" })), ...(a.timeline || []).filter(x => x.remark).map(x => ({ at: x.at, text: x.remark, kind: `Remark · ${STATUS[x.status] || x.status}` }))].sort((x, y) => y.at.localeCompare(x.at));
-    return items.length ? items.map(m => `<div class="note"><div class="meta" style="margin:0 0 4px">${esc(m.kind)} · ${esc(fmt(m.at))}</div>${esc(m.text)}</div>`).join("") : '<p class="muted">No messages yet. Messages and review remarks from the programme team will appear here.</p>';
-  }
-  if (t === "profile") {
-    return `<div id="profileBox"><div class="spinner" style="margin:20px auto"></div></div>`;
-  }
-  return "";
-}
-
-function bindTab(t, a) {
-  root.querySelectorAll("[data-tab-go]").forEach(b => b.addEventListener("click", () => { tab = b.dataset.tabGo; renderStatus(); }));
-  if (t === "documents" && root.querySelector("#docSubmit")) {
-    const defs = STEPS.find(s => s.id === "documents").docs;
-    const docs = JSON.parse(JSON.stringify(a.docs || {}));
-    bindLinks(docs, () => {});
-    root.querySelector("#docSubmit").addEventListener("click", async e => {
-      if (!validateDocs(defs, docs)) { toast("Please fix the highlighted links"); return; }
-      e.target.disabled = true;
-      try { const p = await store.updateMyDocs(a.uid, docs); Object.assign(a, { docs }, p); toast("Documents submitted. The team will review them."); renderStatus(); }
-      catch (err) { toast(friendlyError(err)); e.target.disabled = false; }
-    });
-  }
-  if (t === "profile") renderProfile();
-}
-
-async function renderProfile() {
-  const box = root.querySelector("#profileBox");
-  let p = {};
-  try { p = await store.getProfile(user.uid); } catch {}
-  const v = k => esc(p[k] ?? (k === "name" ? user.name : ""));
-  box.innerHTML = `
-    <div class="field-row">
-      <div class="field"><label for="p-name">Full name</label><input id="p-name" value="${v("name")}"></div>
-      <div class="field"><label>Login email</label><input value="${esc(user.email)}" readonly><p class="hint">✓ Verified</p></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label for="p-phone">Mobile</label><input id="p-phone" type="tel" value="${v("phone")}" placeholder="10-digit mobile"></div>
-      <div class="field"><label for="p-role">Designation</label><input id="p-role" value="${v("role")}" placeholder="e.g. Founder & CEO"></div>
-    </div>
-    <div class="field"><label for="p-li">LinkedIn profile</label><input id="p-li" type="url" value="${v("linkedin")}" placeholder="https://linkedin.com/in/..."></div>
-    <div class="panel-actions"><span class="small muted">Your profile is separate from your submitted application.</span><button class="btn btn-primary" id="pSave">Save profile</button></div>`;
-  box.querySelector("#pSave").addEventListener("click", async e => {
-    const phone = box.querySelector("#p-phone").value.trim(), li = box.querySelector("#p-li").value.trim();
-    if (phone && !/^[6-9]\d{9}$/.test(phone.replace(/\D/g, "").slice(-10))) { toast("Enter a valid 10-digit mobile number"); return; }
-    if (li && !isLink(li)) { toast("LinkedIn link must start with https://"); return; }
-    e.target.disabled = true;
-    try { await store.saveProfile(user.uid, { name: box.querySelector("#p-name").value.trim(), phone, role: box.querySelector("#p-role").value.trim(), linkedin: li }); toast("Profile saved"); }
-    catch (err) { toast(friendlyError(err)); }
-    e.target.disabled = false;
-  });
-}
-
-// ── Funding (shown only when the team has entered real details) ──
+// 4. Disbursement Status
 const TR_LABEL = { planned: "Planned", due: "Due", released: "Released", on_hold: "On hold" };
 const TR_BADGE = { planned: "draft", due: "documents_pending", released: "selected", on_hold: "rejected" };
-function fundingHTML(a) {
-  const f = a.funding;
-  if (a.status !== "selected") return "";
-  if (!f || !f.sanctioned) return `<div class="card" style="margin-bottom:18px"><h3 style="font-size:1rem">Funding</h3><p class="small muted" style="margin:0">Funding terms will appear here once they are finalised in your funding agreement.</p></div>`;
+function renderDisbursement() {
+  const a = app, f = a.funding || {};
+  if (!isSelected() || !f.sanctioned) {
+    root.innerHTML = `${pageHead("Disbursement Status")}
+      <div class="p-empty"><div class="p-empty-ic">₹</div><h2>No disbursement yet</h2><p class="muted">${a.status === "rejected" ? "Disbursement applies only to selected startups." : a.status === "selected" ? "Your disbursement schedule will appear here once the funding terms are finalised." : "Disbursement details appear here after your application is selected and funding is sanctioned."}</p></div>`;
+    bindAppSel(); return;
+  }
   const tr = f.tranches || [];
   const released = tr.filter(t => t.status === "released").reduce((x, t) => x + (+t.amount || 0), 0);
-  return `<div class="card" style="margin-bottom:18px">
-    <h3 style="font-size:1rem">Funding</h3>
-    <table class="summary-table" style="margin-bottom:12px">
-      <tr><th>Sanctioned amount</th><td><b>${esc(money(f.sanctioned))}</b></td></tr>
-      <tr><th>Instrument</th><td>${esc(f.instrument || "—")}</td></tr>
-      ${f.agreementDate ? `<tr><th>Agreement date</th><td>${esc(fmtDate(f.agreementDate))}</td></tr>` : ""}
-      <tr><th>Released so far</th><td>${esc(money(released) || "₹0")}</td></tr>
-    </table>
-    ${tr.length ? `<div class="table-wrap"><table class="data" style="min-width:520px"><thead><tr><th>Tranche</th><th>Amount</th><th>Milestone</th><th>Status</th><th>Released on</th></tr></thead><tbody>
-      ${tr.map(t => `<tr style="cursor:default"><td><b>${esc(t.label)}</b></td><td>${esc(money(t.amount) || "—")}</td><td>${esc(t.milestone || "—")}</td><td><span class="badge badge-${TR_BADGE[t.status] || "draft"}">${TR_LABEL[t.status] || esc(t.status)}</span></td><td class="small">${t.releasedOn ? esc(fmtDate(t.releasedOn)) : "—"}${t.reference ? `<div class="muted">Ref: ${esc(t.reference)}</div>` : ""}</td></tr>`).join("")}
-    </tbody></table></div>` : ""}
-  </div>`;
+  const pending = Math.max(0, (+f.sanctioned || 0) - released);
+  const pct = f.sanctioned ? Math.min(100, Math.round(released / f.sanctioned * 100)) : 0;
+  const next = tr.find(t => t.status === "due") || tr.find(t => t.status === "planned");
+  root.innerHTML = `${pageHead("Disbursement Status", f.instrument ? `Instrument: ${esc(f.instrument)}` : "")}
+    <div class="p-cards">
+      <div class="p-kpi"><span>Sanctioned</span><b>${esc(money(f.sanctioned))}</b></div>
+      <div class="p-kpi ok"><span>Released</span><b>${esc(money(released) || "₹0")}</b></div>
+      <div class="p-kpi"><span>Yet to be released</span><b>${esc(money(pending) || "₹0")}</b></div>
+      <div class="p-kpi"><span>Next tranche</span><b>${next ? esc(next.label) + (next.amount ? " · " + esc(money(next.amount)) : "") : "—"}</b></div>
+    </div>
+    <section class="panel" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;font-size:.9rem"><b>Disbursed</b><span>${pct}%</span></div>
+      <div class="progress" style="height:10px;margin-top:8px" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%;background:var(--green)"></div></div>
+      ${f.agreementDate ? `<p class="small muted" style="margin:10px 0 0">Funding agreement dated ${esc(fmtDate(f.agreementDate))}</p>` : ""}
+    </section>
+    <section class="panel">
+      <h2 style="font-size:1.1rem">Tranche schedule</h2>
+      ${tr.length ? `<div class="table-wrap"><table class="data" style="min-width:560px"><thead><tr><th>Tranche</th><th>Amount</th><th>Milestone</th><th>Status</th><th>Released on</th></tr></thead><tbody>
+        ${tr.map(t => `<tr style="cursor:default"><td><b>${esc(t.label)}</b></td><td>${esc(money(t.amount) || "—")}</td><td>${esc(t.milestone || "—")}</td><td><span class="badge badge-${TR_BADGE[t.status] || "draft"}">${TR_LABEL[t.status] || esc(t.status)}</span></td><td class="small">${t.releasedOn ? esc(fmtDate(t.releasedOn)) : "—"}${t.reference ? `<div class="muted">Ref: ${esc(t.reference)}</div>` : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : '<p class="small muted">The tranche schedule will appear here once it is set.</p>'}
+    </section>`;
+  bindAppSel();
 }
+
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (SECTIONS.includes(h) && h !== section && user) show(h); });
+
+// Start once everything above is defined.
+store.onUser(async u => {
+  if (!u) { location.replace("login.html"); return; }
+  if (user && user.uid === u.uid && user.verified === u.verified) return;
+  user = u;
+  document.getElementById("userEmail").textContent = u.email;
+  renderMenu(true);
+  if (!store.demo && !u.verified) return renderVerify();
+  await load();
+});

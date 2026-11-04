@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>My application — Srujan Fund Support</title>
+  <title>Applicant Portal | Srujan Fund Support</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
@@ -13,19 +13,27 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
 </head>
-<body>
-  <header class="site-header">
-    <div class="container nav">
-      <a href="index.html" class="logo"><img src="assets/img/logo.svg" alt="" class="logo-seal" width="46" height="46"><span class="logo-text">Srujan Fund Support<small>Applicant Dashboard</small></span></a>
-      <div style="display:flex;gap:12px;align-items:center">
-        <span class="small muted" id="userEmail"></span>
-        <button class="btn btn-outline btn-sm" id="logoutBtn">Log out</button>
-      </div>
-    </div>
-  </header>
+<body class="portal">
+  <div class="p-mobilebar">
+    <a href="index.html" class="p-brand-sm"><img src="assets/img/logo.svg" alt="" width="34" height="34"><span>Srujan Fund Support</span></a>
+    <button class="p-menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="side">☰</button>
+  </div>
+  <div class="p-scrim" id="scrim"></div>
 
-  <main class="dash">
-    <div class="container" id="root"><div class="spinner"></div></div>
+  <aside class="p-side" id="side">
+    <a href="index.html" class="p-brand">
+      <img src="assets/img/logo.svg" alt="" width="44" height="44">
+      <span>Srujan Fund Support<small>Applicant Portal</small></span>
+    </a>
+    <nav class="p-menu" id="menu" aria-label="Applicant sections"></nav>
+    <div class="p-user">
+      <div class="p-user-email" id="userEmail"></div>
+      <button class="btn btn-sm p-logout" id="logoutBtn">Log out</button>
+    </div>
+  </aside>
+
+  <main class="p-main">
+    <div class="p-wrap" id="root"><div class="spinner"></div></div>
   </main>
 
   <script type="module" src="assets/js/dashboard.js"></script>
