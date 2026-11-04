@@ -105,7 +105,7 @@ function renderList() {
   root.innerHTML = `
     <div class="dash-head">
       <div><p class="small muted" style="margin:0 0 4px">${role === "admin" ? "Admin console" : "Reviewer console"}</p><h1>${role === "admin" ? "Applications" : "Assigned to you"}</h1></div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${role === "admin" ? `<a class="btn btn-primary btn-sm" href="#new">+ Add startup</a><a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
         <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
         ${role === "admin" ? `<button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button>` : ""}

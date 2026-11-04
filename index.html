@@ -16,6 +16,7 @@
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
 </head>
 <body>
+  <div class="topbar" data-topbar></div>
   <header class="site-header">
     <div class="container nav">
       <a href="index.html" class="logo">
@@ -26,6 +27,7 @@
       <ul class="nav-links">
         <li><a href="#about">About</a></li>
         <li><a href="#eligibility">Eligibility</a></li>
+        <li><a href="#evaluation">Evaluation</a></li>
         <li><a href="#process">How it works</a></li>
         <li><a href="#faq">FAQs</a></li>
         <li><a href="#contact">Contact</a></li>
@@ -46,6 +48,11 @@
             <a href="login.html" class="btn btn-primary">Track your application</a>
             <a href="#contact" class="btn btn-outline">How to apply</a>
           </div>
+          <ul class="trust-points">
+            <li>Secure login with verified email</li>
+            <li>Status visible at every stage</li>
+            <li>Published eligibility &amp; evaluation criteria</li>
+          </ul>
         </div>
         <div class="hero-card">
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line)">
@@ -60,6 +67,19 @@
             <li><span class="ic">N</span><div><b>Investor network</b><span>Introductions to angels and funds when you're ready to raise</span></div></li>
           </ul>
         </div>
+      </div>
+    </section>
+
+    <!-- Impact (shown only when real figures are set in config.js) -->
+    <section class="impact-band" data-section>
+      <div class="container impact-grid" data-stats></div>
+    </section>
+
+    <!-- Latest updates (shown only when announcements are set) -->
+    <section class="block" id="updates" data-section>
+      <div class="container">
+        <div class="section-head"><h2>Latest updates</h2></div>
+        <div class="grid-3" data-announcements></div>
       </div>
     </section>
 
@@ -110,6 +130,24 @@
       </div>
     </section>
 
+    <!-- Evaluation -->
+    <section class="block" id="evaluation">
+      <div class="container">
+        <div class="section-head">
+          <h2>How we evaluate</h2>
+          <p>Every application is scored by our review team on the same six criteria, each rated 1–5. Scores, along with the reviewers' recommendations, inform the final decision.</p>
+        </div>
+        <div class="grid-3">
+          <div class="card crit"><span>01</span><h3>Team &amp; founder fit</h3><p class="muted">Relevant experience, commitment and ability to execute.</p></div>
+          <div class="card crit"><span>02</span><h3>Problem clarity</h3><p class="muted">A real, well-understood problem for a clearly defined customer.</p></div>
+          <div class="card crit"><span>03</span><h3>Solution &amp; innovation</h3><p class="muted">What's new about the approach and how defensible it is.</p></div>
+          <div class="card crit"><span>04</span><h3>Market size</h3><p class="muted">How large and reachable the opportunity is.</p></div>
+          <div class="card crit"><span>05</span><h3>Business model</h3><p class="muted">A credible path to revenue and sustainable unit economics.</p></div>
+          <div class="card crit"><span>06</span><h3>Traction</h3><p class="muted">Evidence so far: users, pilots, revenue, LOIs or validated prototypes.</p></div>
+        </div>
+      </div>
+    </section>
+
     <!-- Process -->
     <section class="block alt" id="process">
       <div class="container">
@@ -131,7 +169,7 @@
       <div class="container">
         <div class="section-head">
           <h2>Documents we'll ask for</h2>
-          <p>Upload each document to Google Drive (or Dropbox/OneDrive), set sharing to <b>"Anyone with the link can view"</b>, and paste the links in the application.</p>
+          <p>Send these with your application email, as PDF attachments or as Google Drive / Dropbox links shared as <b>"Anyone with the link can view"</b>.</p>
         </div>
         <div class="grid-3">
           <div class="card"><h3>Certificate of incorporation</h3><p class="muted">Or LLP / partnership registration certificate.</p></div>
@@ -144,30 +182,41 @@
       </div>
     </section>
 
+    <!-- Partners (shown only when real partners are set) -->
+    <section class="block alt" id="partners" data-section>
+      <div class="container">
+        <div class="section-head"><h2>Our partners</h2></div>
+        <div class="partner-grid" data-partners></div>
+      </div>
+    </section>
+
     <!-- FAQ -->
     <section class="block alt" id="faq">
       <div class="container">
         <div class="section-head"><h2>Frequently asked questions</h2></div>
         <div class="faq">
-          <details><summary>Is there an application fee?</summary><p>No. Applying through this portal is free.</p></details>
+          <details><summary>Is there an application fee?</summary><p>No. There is no fee to apply.</p></details>
           <details><summary>How do I see my application status?</summary><p>Create a login on this portal using the same email you applied with, verify your email, and your application status will appear on your dashboard. If nothing shows, email us.</p></details>
           <details><summary>How long does the review take?</summary><p>Timelines depend on the number of applications. You'll see every status change on your dashboard: submitted, under review, shortlisted, and the final decision.</p></details>
-          <details><summary>Is Srujan Fund Support a government scheme?</summary><p>No. Srujan Fund Support is a privately run program and is not affiliated with any government scheme or department.</p></details>
+          <details><summary>Is Srujan Fund Support a government scheme?</summary><p>No. Srujan Fund Support is a privately run program. It is not affiliated with any government scheme or department, including the Government of Gujarat's "Startup Srujan" seed support scheme run by i-Hub Gujarat.</p></details>
           <details><summary>Is my information kept confidential?</summary><p>Yes. Your application and documents are visible only to you and our review team, and are used only to evaluate your application.</p></details>
           <details><summary>Can I change my application details?</summary><p>Your details are managed by our team. If anything needs correcting, email us with your application ID.</p></details>
         </div>
       </div>
     </section>
 
-    <!-- CTA -->
+    <!-- Contact -->
     <section class="block" id="contact">
       <div class="container">
+        <div class="section-head"><h2>Contact &amp; helpline</h2></div>
+        <div data-contacts></div>
+        <div style="height:28px"></div>
         <div class="cta-band">
           <div>
             <h2>Want to apply?</h2>
             <p>Send your pitch deck and company details to <a data-site-email style="color:#fff;text-decoration:underline"></a></p>
           </div>
-          <a href="login.html" class="btn btn-accent">Track your application</a>
+          <a href="#" data-mailto class="btn btn-accent">Email your application</a>
         </div>
       </div>
     </section>
@@ -186,9 +235,10 @@
         </div>
         <div>
           <h4>Applicants</h4>
-          <ul><li><a href="login.html">Track application</a></li><li><a href="login.html?mode=signup">Create login</a></li><li><a data-site-email></a></li></ul>
+          <ul><li><a href="login.html">Track application</a></li><li><a href="login.html?mode=signup">Create login</a></li><li><a data-site-email></a></li><li><a href="privacy.html">Privacy policy</a></li><li><a href="terms.html">Terms of use</a></li></ul>
         </div>
       </div>
+      <p class="small" data-operator style="margin:24px 0 0;color:#93a39e"></p>
       <div class="footer-bottom">
         <span>© <span data-year></span> Srujan Fund Support. All rights reserved.</span>
         <span>A private startup support program. Not affiliated with any government scheme.</span>

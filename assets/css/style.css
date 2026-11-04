@@ -292,3 +292,72 @@ table.data tbody tr:last-child td { border-bottom: 0; }
   body { background: #fff; }
   .panel, .stat { break-inside: avoid; }
 }
+
+/* ── Trust & institutional elements ─────────────────────────── */
+.topbar { background: #13294b; color: #d9e1ee; font-size: .8rem; }
+.topbar-inner { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; flex-wrap: wrap; }
+.topbar-inner > div { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.topbar a { color: #d9e1ee; text-decoration: none; }
+.topbar a:hover { color: #fff; text-decoration: underline; }
+.site-header { border-top: 3px solid #b8892d; }
+
+.trust-points { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.trust-points li { font-size: .85rem; color: var(--ink-2); padding-left: 22px; position: relative; }
+.trust-points li::before { content: ""; position: absolute; left: 0; top: 5px; width: 13px; height: 13px; border-radius: 50%; background: #13294b; box-shadow: inset 0 0 0 3px #e7c784; }
+
+.impact-band { background: #13294b; color: #fff; padding: 34px 0; }
+.impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; text-align: center; }
+.impact .n { font-family: "Cinzel", Georgia, serif; font-size: 2rem; font-weight: 700; color: #e7c784; line-height: 1.1; }
+.impact .l { font-size: .85rem; color: #c9d3e3; margin-top: 4px; }
+
+.card.news time { font-size: .78rem; font-weight: 700; color: #8a6a22; letter-spacing: .04em; text-transform: uppercase; }
+.card.news h3 { margin-top: 6px; }
+.card.crit span { display: inline-block; font-family: "Cinzel", Georgia, serif; font-weight: 700; color: #b8892d; font-size: 1.1rem; margin-bottom: 6px; }
+
+.partner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.partner { background: #fff; border: 1px solid var(--line); border-radius: 12px; height: 86px; display: grid; place-items: center; padding: 12px; text-decoration: none; color: var(--ink-2); font-weight: 600; text-align: center; }
+.partner img { max-width: 100%; max-height: 56px; object-fit: contain; filter: grayscale(1); opacity: .85; transition: filter .2s, opacity .2s; }
+.partner:hover img { filter: none; opacity: 1; }
+
+.contact-grid { display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 20px; align-items: start; }
+.contact-grid > :only-child { grid-column: 1 / -1; max-width: 560px; }
+.contact-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.contact-list li { display: grid; grid-template-columns: 76px 1fr; gap: 10px; font-size: .92rem; word-break: break-word; }
+.contact-list span { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+
+.legal { max-width: 800px; }
+.legal h2 { font-size: 1.2rem; margin-top: 28px; }
+.legal p, .legal li { color: var(--ink-2); }
+
+/* ── Responsive refinements ─────────────────────────────────── */
+h1, h2, h3, p, li, td, a { overflow-wrap: anywhere; }
+@media (max-width: 1060px) {
+  .nav-links { gap: 14px; }
+  .nav-links a { font-size: .9rem; }
+}
+@media (max-width: 920px) {
+  .contact-grid { grid-template-columns: 1fr; }
+  .hero-card { max-width: 560px; }
+}
+@media (max-width: 720px) {
+  .topbar-inner { justify-content: center; text-align: center; }
+  .topbar-inner > div { justify-content: center; gap: 6px 14px; }
+  .hero h1 { font-size: 1.9rem; }
+  .hero-actions .btn { flex: 1 1 100%; }
+  .section-head { margin-bottom: 24px; }
+  .card { padding: 20px; }
+  .impact .n { font-size: 1.6rem; }
+  .dash-head h1 { font-size: 1.3rem; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .filters { grid-template-columns: 1fr; }
+  .auth-card { padding: 24px 20px; }
+  .summary-table th { width: 42%; }
+  .footer-bottom { flex-direction: column; }
+  .nav-links [data-auth-slot] { padding-top: 6px; }
+}
+@media (max-width: 380px) {
+  .logo-text { font-size: .85rem; }
+  .logo small { font-size: .58rem; letter-spacing: .08em; }
+}
+table.data th, table.data td { overflow-wrap: normal; word-break: normal; }
+[data-contacts] table.data td { white-space: nowrap; }

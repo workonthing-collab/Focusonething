@@ -69,3 +69,9 @@ Applicants can edit only while in `draft`. After submission, only admins can cha
 - **Phase 2 (done):** admin console: list/filter applications, view documents, change status, notes, scoring, CSV export
 - **Phase 3 (done):** reviewer role, per-reviewer scorecards with average, reviewer assignment, email notifications
 - **Phase 4 (done):** funding & tranche tracking for selected startups, progress/utilisation reports from startups, reports dashboard (funnel, monthly submissions, sector/state/stage, funding totals)
+
+## Trust & contact details (config.js)
+
+`assets/js/config.js` → `site` has fields for the operating entity, CIN, address, phone, hours, social links, helpline contacts, impact numbers, announcements and partners. **Each block on the homepage stays hidden until it is filled.** Use only real, verifiable information. Never add placeholder numbers, partners you don't have an agreement with, or testimonials you can't attribute.
+
+Legal pages: `privacy.html`, `terms.html`. These describe how the portal actually works; have them reviewed by your lawyer/CA.

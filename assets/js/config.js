@@ -19,6 +19,21 @@ export const site = {
   shortName: "Srujan",
   email: "support@srujanfundsupport.in",
   phone: "",
+  // ── Trust & contact details. Leave blank and that block stays hidden on the site.
+  // Fill ONLY with real information — never placeholder or estimated numbers.
+  operator: "",        // legal entity that runs the program, e.g. "XYZ Ventures Pvt Ltd"
+  cin: "",             // its CIN / LLPIN
+  address: "",         // registered or office address
+  hours: "",           // e.g. "Mon–Sat, 10:30 AM – 6:30 PM"
+  social: { linkedin: "", instagram: "", x: "", youtube: "" },
+  // Named helpline contacts: { role: "Applications", name: "", email: "", phone: "" }
+  contacts: [],
+  // Impact numbers — only real, verifiable figures: { value: "25", label: "Startups supported" }
+  stats: [],
+  // Latest updates: { date: "2026-11-04", title: "", text: "", link: "" }
+  announcements: [],
+  // Partners you have a real, written agreement with: { name: "", logo: "assets/img/partners/x.png", url: "" }
+  partners: [],
   // Where new-application alerts are sent (your inbox)
   adminEmail: "",
   // Max upload size per document, in MB
