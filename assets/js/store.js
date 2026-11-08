@@ -40,7 +40,12 @@ export function friendlyError(e) {
     "auth/invalid-credential": "Email or password is incorrect.",
     "auth/wrong-password": "Email or password is incorrect.",
     "auth/user-not-found": "No account found with this email.",
-    "auth/too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
+    "auth/invalid-action-code": "This login link has expired or was already used. Please request a new one.",
+    "auth/expired-action-code": "This login link has expired. Please request a new one.",
+    "auth/operation-not-allowed": "Email-link login isn't switched on yet. Please contact support.",
+    "auth/unauthorized-continue-uri": "This site isn't allowed to send login links yet. Please contact support.",
+    "auth/quota-exceeded": "Too many login links were sent today. Please try again tomorrow or contact support.",
+    "auth/too-many-requests":"Too many attempts. Please wait a few minutes and try again.",
     "auth/network-request-failed": "Network error. Check your internet connection.",
     "permission-denied": "You don't have access to this. Please log in again or contact support.",
     "insufficient permissions": "You don't have access to this. Please log in again or contact support."
@@ -93,6 +98,39 @@ export const store = {
     }
     const { auth, A } = await loadFirebase();
     await A.signInWithEmailAndPassword(auth, email, password);
+  },
+
+  // Passwordless: email a one-time sign-in link. No account creation needed;
+  // the first click on the link creates the login automatically.
+  async sendLoginLink(email, returnUrl) {
+    email = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw err("auth/invalid-email");
+    if (DEMO_MODE) {
+      const users = LS.get("sfs_users", {});
+      if (!users[email]) { users[email] = { uid: "demo_" + Math.random().toString(36).slice(2, 10), name: "" }; LS.set("sfs_users", users); }
+      LS.set("sfs_session", { uid: users[email].uid, email, name: users[email].name, verified: true });
+      demoEmit();
+      return { demo: true };
+    }
+    const { auth, A } = await loadFirebase();
+    await A.sendSignInLinkToEmail(auth, email, { url: returnUrl, handleCodeInApp: true });
+    try { localStorage.setItem("sfs_link_email", email); } catch {}
+    return {};
+  },
+
+  // True when the current page was opened from a sign-in link.
+  async isLoginLink(href) {
+    if (DEMO_MODE) return false;
+    const { auth, A } = await loadFirebase();
+    return A.isSignInWithEmailLink(auth, href);
+  },
+
+  linkEmail() { try { return localStorage.getItem("sfs_link_email") || ""; } catch { return ""; } },
+
+  async completeLoginLink(email, href) {
+    const { auth, A } = await loadFirebase();
+    await A.signInWithEmailLink(auth, email.trim().toLowerCase(), href);
+    try { localStorage.removeItem("sfs_link_email"); } catch {}
   },
 
   async resendVerification() {

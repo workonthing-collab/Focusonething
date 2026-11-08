@@ -26,37 +26,41 @@
         <img src="assets/img/logo.svg" alt="Srujan Fund Support seal" width="88" height="88" style="display:inline-block">
         <div class="logo-text" style="font-size:1.05rem;margin-top:6px">Srujan Fund Support</div>
       </div>
-      <div class="auth-tabs" role="tablist">
-        <button type="button" data-tab="login" class="active">Applicant Login</button>
-        <button type="button" data-tab="signup">Register</button>
-      </div>
-
       <div id="msg"></div>
 
-      <!-- Login -->
-      <form id="loginForm" novalidate>
-        <h2 style="font-size:1.3rem">Welcome back</h2>
-        <p class="muted small">Log in to view your application status.</p>
+      <!-- Applicant: passwordless email link -->
+      <form id="linkForm" novalidate>
+        <h2 style="font-size:1.3rem">Applicant Login</h2>
+        <p class="muted small">Enter the <b>email address you applied with</b>. We'll email you a secure login link. No account or password is needed.</p>
+        <div class="field"><label for="ln-email">Email</label><input id="ln-email" type="email" autocomplete="email" required></div>
+        <button class="btn btn-apply" style="width:100%" type="submit">Send login link</button>
+      </form>
+
+      <!-- Shown after the link is sent -->
+      <div id="sentBox" class="hidden" style="text-align:center">
+        <h2 style="font-size:1.3rem">Check your email</h2>
+        <p class="muted small">We've sent a login link to <b id="sentTo"></b>. Open it on this device to sign in. If you don't see it within a few minutes, check your Spam or Promotions folder.</p>
+        <button type="button" class="btn btn-ghost btn-sm" id="againBtn">Use a different email</button>
+      </div>
+
+      <!-- Link opened on another device: confirm email -->
+      <form id="confirmForm" class="hidden" novalidate>
+        <h2 style="font-size:1.3rem">Confirm your email</h2>
+        <p class="muted small">You opened the login link on a different device or browser. Please confirm the email address the link was sent to.</p>
+        <div class="field"><label for="cf-email">Email</label><input id="cf-email" type="email" autocomplete="email" required></div>
+        <button class="btn btn-apply" style="width:100%" type="submit">Log in</button>
+      </form>
+
+      <!-- Staff: password login -->
+      <form id="loginForm" class="hidden" novalidate>
+        <h2 style="font-size:1.3rem">Staff login</h2>
         <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="li-pw">Password</label><input id="li-pw" type="password" autocomplete="current-password" required></div>
         <button class="btn btn-primary" style="width:100%" type="submit">Log in</button>
         <p class="small" style="margin:14px 0 0;text-align:center"><button type="button" class="link-btn" id="forgotBtn">Forgot password?</button></p>
       </form>
 
-      <!-- Signup -->
-      <form id="signupForm" class="hidden" novalidate>
-        <h2 style="font-size:1.3rem">Register to track your application</h2>
-        <p class="muted small">Use the <b>same email you applied with</b>. We'll send a link to verify it, and your application will appear automatically.</p>
-        <div class="field"><label for="su-name">Founder's full name</label><input id="su-name" type="text" autocomplete="name" required></div>
-        <div class="field"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
-        <div class="field"><label for="su-pw">Password</label><input id="su-pw" type="password" autocomplete="new-password" minlength="8" required><p class="hint">At least 8 characters.</p></div>
-        <div class="field"><label for="su-pw2">Confirm password</label><input id="su-pw2" type="password" autocomplete="new-password" required></div>
-        <div class="field" style="display:flex;gap:10px;align-items:flex-start">
-          <input id="su-terms" type="checkbox" style="margin-top:5px">
-          <label for="su-terms" style="font-weight:400;font-size:.85rem">I confirm this is my own email address, and I agree to the <a href="terms.html" target="_blank">Terms</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>. I understand that applying does not guarantee funding.</label>
-        </div>
-        <button class="btn btn-apply" style="width:100%" type="submit">Create login</button>
-      </form>
+      <p class="small muted" style="margin:18px 0 0;text-align:center" id="switchRow"><button type="button" class="link-btn" id="switchBtn">Staff login</button></p>
     </div>
   </main>
 
@@ -66,44 +70,56 @@
 
     const $ = id => document.getElementById(id);
     const msg = (text, type = "error") => { $("msg").innerHTML = text ? `<div class="alert alert-${type}">${text}</div>` : ""; };
-    const tabs = document.querySelectorAll("[data-tab]");
+    const params = new URLSearchParams(location.search);
+    const next = params.get("next") === "admin" ? "admin.html" : "dashboard.html";
+    const views = ["linkForm", "sentBox", "confirmForm", "loginForm"];
+    const view = v => { views.forEach(x => $(x).classList.toggle("hidden", x !== v)); $("switchRow").classList.toggle("hidden", v === "confirmForm"); $("switchBtn").textContent = v === "loginForm" ? "Applicant login" : "Staff login"; };
+    view(next === "admin.html" ? "loginForm" : "linkForm");
+    $("switchBtn").addEventListener("click", () => { msg(""); view($("loginForm").classList.contains("hidden") ? "loginForm" : "linkForm"); });
+    $("againBtn").addEventListener("click", () => { msg(""); view("linkForm"); });
 
-    function show(tab) {
-      tabs.forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
-      $("loginForm").classList.toggle("hidden", tab !== "login");
-      $("signupForm").classList.toggle("hidden", tab !== "signup");
-      msg("");
-    }
-    tabs.forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
-    if (new URLSearchParams(location.search).get("mode") === "signup") show("signup");
-
-    const next = new URLSearchParams(location.search).get("next") === "admin" ? "admin.html" : "dashboard.html";
     let busy = false;
     store.onUser(u => { if (u && !busy) location.replace(next); });
 
-    async function run(form, fn) {
+    async function withBtn(form, fn) {
       const btn = form.querySelector("button[type=submit]");
       busy = true; btn.disabled = true; msg("");
-      try { await fn(); location.replace(next); }
-      catch (e) { msg(friendlyError(e)); }
-      finally { busy = false; btn.disabled = false; }
+      try { await fn(); } catch (e) { msg(friendlyError(e)); busy = false; } finally { btn.disabled = false; }
     }
+
+    // Returning from the emailed link
+    const href = location.href;
+    if (await store.isLoginLink(href)) {
+      busy = true;
+      const saved = store.linkEmail();
+      const finish = async email => { await store.completeLoginLink(email, href); location.replace(next); };
+      if (saved) {
+        msg("Signing you in…", "info");
+        try { await finish(saved); } catch (e) { busy = false; msg(friendlyError(e)); view("linkForm"); history.replaceState(null, "", "login.html"); }
+      } else {
+        view("confirmForm");
+        $("confirmForm").addEventListener("submit", e => { e.preventDefault(); withBtn(e.target, () => finish($("cf-email").value)); });
+      }
+    }
+
+    $("linkForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const email = $("ln-email").value.trim();
+      if (!email) return msg("Please enter your email address.");
+      withBtn(e.target, async () => {
+        const r = await store.sendLoginLink(email, location.origin + location.pathname);
+        if (r.demo) return location.replace(next);
+        busy = false;
+        $("sentTo").textContent = email.toLowerCase();
+        view("sentBox");
+      });
+    });
 
     $("loginForm").addEventListener("submit", e => {
       e.preventDefault();
       const email = $("li-email").value, password = $("li-pw").value;
       if (!email || !password) return msg("Please enter your email and password.");
-      run(e.target, () => store.signIn({ email, password }));
-    });
-
-    $("signupForm").addEventListener("submit", e => {
-      e.preventDefault();
-      const name = $("su-name").value.trim(), email = $("su-email").value, password = $("su-pw").value;
-      if (!name || !email || !password) return msg("Please fill all fields.");
-      if (password.length < 8) return msg("Password should be at least 8 characters.");
-      if (password !== $("su-pw2").value) return msg("Passwords don't match.");
-      if (!$("su-terms").checked) return msg("Please accept the declaration to continue.");
-      run(e.target, () => store.signUp({ name, email, password }));
+      withBtn(e.target, async () => { await store.signIn({ email, password }); location.replace(next); });
     });
 
     $("forgotBtn").addEventListener("click", async () => {
