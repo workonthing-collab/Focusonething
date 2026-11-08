@@ -100,6 +100,26 @@ export const store = {
     await A.signInWithEmailAndPassword(auth, email, password);
   },
 
+  // Sign in with Google: the password is entered on Google's own page; this site never sees it.
+  async signInWithGoogle() {
+    if (DEMO_MODE) {
+      const email = (prompt("Demo mode — Google email to sign in as:") || "").trim().toLowerCase();
+      if (!email) throw err("auth/popup-closed-by-user");
+      const users = LS.get("sfs_users", {});
+      if (!users[email]) { users[email] = { uid: "demo_" + Math.random().toString(36).slice(2, 10), name: "" }; LS.set("sfs_users", users); }
+      LS.set("sfs_session", { uid: users[email].uid, email, name: users[email].name, verified: true });
+      demoEmit(); return;
+    }
+    const { auth, A } = await loadFirebase();
+    const provider = new A.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    try { await A.signInWithPopup(auth, provider); }
+    catch (e) {
+      if (e?.code === "auth/popup-blocked" || e?.code === "auth/operation-not-supported-in-this-environment") return A.signInWithRedirect(auth, provider);
+      throw e;
+    }
+  },
+
   // Passwordless: email a one-time sign-in link. No account creation needed;
   // the first click on the link creates the login automatically.
   async sendLoginLink(email, returnUrl) {
