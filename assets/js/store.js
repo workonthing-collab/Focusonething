@@ -53,6 +53,10 @@ export function friendlyError(e) {
     "auth/invalid-credential": "Email or password is incorrect.",
     "auth/wrong-password": "Email or password is incorrect.",
     "auth/user-not-found": "No account found with this email.",
+    "auth/popup-closed-by-user": "Sign-in was cancelled. Please try again.",
+    "auth/cancelled-popup-request": "Sign-in was cancelled. Please try again.",
+    "auth/account-exists-with-different-credential": "This email is already registered with a password. Use Staff login, or ask the team to switch your account to Google sign-in.",
+    "auth/unauthorized-domain": "This site isn't authorised for Google sign-in yet. Please contact support.",
     "auth/invalid-action-code": "This login link has expired or was already used. Please request a new one.",
     "auth/expired-action-code": "This login link has expired. Please request a new one.",
     "auth/operation-not-allowed": "Email-link login isn't switched on yet. Please contact support.",
@@ -113,26 +117,6 @@ export const store = {
     await A.signInWithEmailAndPassword(auth, email, password);
   },
 
-  // Sign in with Google: the password is entered on Google's own page; this site never sees it.
-  async signInWithGoogle() {
-    if (DEMO_MODE) {
-      const email = (prompt("Demo mode — Google email to sign in as:") || "").trim().toLowerCase();
-      if (!email) throw err("auth/popup-closed-by-user");
-      const users = LS.get("sfs_users", {});
-      if (!users[email]) { users[email] = { uid: "demo_" + Math.random().toString(36).slice(2, 10), name: "" }; LS.set("sfs_users", users); }
-      LS.set("sfs_session", { uid: users[email].uid, email, name: users[email].name, verified: true });
-      demoEmit(); return;
-    }
-    const { auth, A } = await loadFirebase();
-    const provider = new A.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
-    try { await A.signInWithPopup(auth, provider); }
-    catch (e) {
-      if (e?.code === "auth/popup-blocked" || e?.code === "auth/operation-not-supported-in-this-environment") return A.signInWithRedirect(auth, provider);
-      throw e;
-    }
-  },
-
   // Passwordless: email a one-time sign-in link. No account creation needed;
   // the first click on the link creates the login automatically.
   async sendLoginLink(email, returnUrl) {
@@ -169,19 +153,44 @@ export const store = {
 
   // Applicant login with a real Google account. Google collects the password
   // on its own page; the portal only receives the verified email and name.
+  // Returns { redirecting: true } when it hands off to a full-page redirect
+  // (common on phones, where popups are blocked); the result is then picked up
+  // by finishRedirectLogin() when the page reloads.
   async signInWithGoogle() {
     if (DEMO_MODE) {
       const email = "demo.google@example.com";
       LS.set("sfs_session", { uid: "demo_google", email, name: "Demo Google User", verified: true });
       await recordLogin({ email, displayName: "Demo Google User", uid: "demo_google" }, "google");
       demoEmit();
-      return;
+      return {};
     }
     const { auth, A } = await loadFirebase();
     const provider = new A.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-    const res = await A.signInWithPopup(auth, provider);
-    await recordLogin(res.user, "google");
+    const useRedirect = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "");
+    if (useRedirect) { await A.signInWithRedirect(auth, provider); return { redirecting: true }; }
+    try {
+      const res = await A.signInWithPopup(auth, provider);
+      await recordLogin(res.user, "google");
+      return {};
+    } catch (e) {
+      if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment", "auth/cancelled-popup-request"].includes(e?.code)) {
+        await A.signInWithRedirect(auth, provider);
+        return { redirecting: true };
+      }
+      throw e;
+    }
+  },
+
+  // Call once on page load: if we're returning from a Google redirect sign-in,
+  // record it and report success. Returns the user, or null if not a redirect.
+  async finishRedirectLogin() {
+    if (DEMO_MODE) return null;
+    const { auth, A } = await loadFirebase();
+    let res = null;
+    try { res = await A.getRedirectResult(auth); } catch { return null; }
+    if (res && res.user) { await recordLogin(res.user, "google"); return res.user; }
+    return null;
   },
 
   // Admin: list recorded sign-ins (newest first) for the sign-in log / export.

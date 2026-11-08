@@ -63,13 +63,25 @@
     $("switchBtn").addEventListener("click", () => { msg(""); view($("loginForm").classList.contains("hidden") ? "staff" : "google"); });
 
     let busy = false;
+
+    // If we're returning from a Google redirect sign-in (common on phones), finish it.
+    (async () => {
+      try {
+        const u = await store.finishRedirectLogin();
+        if (u) { busy = true; location.replace(next); }
+      } catch (e) { msg(friendlyError(e)); }
+    })();
+
     store.onUser(u => { if (u && !busy) location.replace(next); });
 
     $("googleBtn").addEventListener("click", async () => {
       const btn = $("googleBtn"); busy = true; btn.disabled = true; msg("");
-      try { await store.signInWithGoogle(); location.replace(next); }
-      catch (e) { busy = false; msg(friendlyError(e)); }
-      finally { btn.disabled = false; }
+      try {
+        const r = await store.signInWithGoogle();
+        if (r && r.redirecting) { btn.querySelector("span").textContent = "Redirecting to Google…"; return; }
+        location.replace(next);
+      }
+      catch (e) { busy = false; msg(friendlyError(e)); btn.disabled = false; }
     });
 
     $("loginForm").addEventListener("submit", async e => {
