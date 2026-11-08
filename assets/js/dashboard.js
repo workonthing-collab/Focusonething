@@ -610,6 +610,5 @@ store.onUser(async u => {
   user = u;
   document.getElementById("userEmail").textContent = u.email;
   renderMenu(true);
-  if (!store.demo && !u.verified) return renderVerify();
   await load();
 });

@@ -13,8 +13,17 @@ async function loadFirebase() {
     import(FB + "firebase-storage.js")
   ]);
   const a = app.initializeApp(firebaseConfig);
-  fb = { auth: auth.getAuth(a), db: fs.getFirestore(a), storage: st.getStorage(a), A: auth, F: fs, S: st };
+  fb = { auth: auth.getAuth(a), db: fs.getFirestore(a), storage: st.getStorage(a), App: app, A: auth, F: fs, S: st };
   return fb;
+}
+
+// A second Firebase app so an admin can create a login without being
+// signed out of their own admin session.
+let fb2 = null;
+async function secondaryAuth() {
+  const { App, A } = await loadFirebase();
+  if (!fb2) { const a2 = App.initializeApp(firebaseConfig, "provision-" + Date.now()); fb2 = A.getAuth(a2); }
+  return fb2;
 }
 
 // Records a sign-in to the /logins collection (the admin "Sign-in log").
@@ -114,7 +123,70 @@ export const store = {
       return;
     }
     const { auth, A } = await loadFirebase();
-    await A.signInWithEmailAndPassword(auth, email, password);
+    const cred = await A.signInWithEmailAndPassword(auth, email, password);
+    await recordLogin(cred.user, "password");
+  },
+
+  // Admin: create a portal login for a founder (email + a password the admin sets).
+  // Uses a secondary app so the admin stays signed in. Stores the credential so
+  // the admin can view it later (per the admin's choice).
+  async adminCreateLogin({ email, password, name }) {
+    email = (email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw err("auth/invalid-email");
+    if (!password || password.length < 6) throw err("auth/weak-password", "Password should be at least 6 characters.");
+    if (DEMO_MODE) {
+      const users = LS.get("sfs_users", {});
+      if (users[email]) throw err("auth/email-already-in-use");
+      const uid = "demo_" + Math.random().toString(36).slice(2, 10);
+      users[email] = { uid, name: name || "", pw: await hash(password) };
+      LS.set("sfs_users", users);
+      const creds = LS.get("sfs_credentials", {});
+      creds[uid] = { uid, email, name: name || "", password, createdAt: new Date().toISOString() };
+      LS.set("sfs_credentials", creds);
+      return { uid };
+    }
+    const A = (await loadFirebase()).A;
+    const sec = await secondaryAuth();
+    const cred = await A.createUserWithEmailAndPassword(sec, email, password);
+    if (name) { try { await A.updateProfile(cred.user, { displayName: name }); } catch {} }
+    const uid = cred.user.uid;
+    try { await A.signOut(sec); } catch {}
+    const { db, F } = await loadFirebase();
+    await F.setDoc(F.doc(db, "credentials", uid), { uid, email, name: name || "", password, createdAt: new Date().toISOString() });
+    return { uid };
+  },
+
+  // Admin: change a login's password (needs the current stored password to re-auth).
+  async adminResetPassword({ uid, email, currentPassword, newPassword }) {
+    email = (email || "").trim().toLowerCase();
+    if (!newPassword || newPassword.length < 6) throw err("auth/weak-password", "Password should be at least 6 characters.");
+    if (DEMO_MODE) {
+      const users = LS.get("sfs_users", {}); if (users[email]) users[email].pw = await hash(newPassword); LS.set("sfs_users", users);
+      const creds = LS.get("sfs_credentials", {}); if (creds[uid]) creds[uid].password = newPassword; LS.set("sfs_credentials", creds);
+      return;
+    }
+    const A = (await loadFirebase()).A;
+    const sec = await secondaryAuth();
+    const c = await A.signInWithEmailAndPassword(sec, email, currentPassword);
+    await A.updatePassword(c.user, newPassword);
+    try { await A.signOut(sec); } catch {}
+    const { db, F } = await loadFirebase();
+    await F.updateDoc(F.doc(db, "credentials", uid), { password: newPassword, updatedAt: new Date().toISOString() });
+  },
+
+  // Admin: list all portal logins (with the stored passwords, admin-only).
+  async listCredentials() {
+    if (DEMO_MODE) return Object.values(LS.get("sfs_credentials", {})).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    const { db, F } = await loadFirebase();
+    const snap = await F.getDocs(F.collection(db, "credentials"));
+    return snap.docs.map(d => d.data()).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  },
+
+  // Admin: remove the stored credential record (does not delete the Auth login itself).
+  async deleteCredential(uid) {
+    if (DEMO_MODE) { const creds = LS.get("sfs_credentials", {}); delete creds[uid]; LS.set("sfs_credentials", creds); return; }
+    const { db, F } = await loadFirebase();
+    await F.deleteDoc(F.doc(db, "credentials", uid));
   },
 
   // Passwordless: email a one-time sign-in link. No account creation needed;

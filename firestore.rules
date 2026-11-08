@@ -14,9 +14,15 @@ service cloud.firestore {
     function assignedTo(appId) {
       return get(/databases/$(database)/documents/applications/$(appId)).data.get('assignedTo', []);
     }
-    // Founder = verified login whose email matches the record's founderEmail.
+    // A login that an admin provisioned has a /credentials/{uid} record.
+    // This replaces email verification: only accounts the admin created count,
+    // so nobody can self-register a founder's email to read their data.
+    function isProvisioned() {
+      return signedIn() && exists(/databases/$(database)/documents/credentials/$(request.auth.uid));
+    }
+    // Founder = an admin-provisioned login whose email matches the record.
     function isFounderOf(data) {
-      return verified() && request.auth.token.email == data.founderEmail;
+      return isProvisioned() && request.auth.token.email == data.founderEmail;
     }
     // Fields an applicant may write on their own application.
     function applicantKeys() {
@@ -89,6 +95,12 @@ service cloud.firestore {
                     && request.resource.data.uid == request.auth.uid
                     && request.resource.data.keys().hasOnly(['email', 'name', 'uid', 'method', 'at']);
       allow update, delete: if false;
+    }
+
+    // Portal logins created by an admin (email + password the admin set).
+    // Admin-only: never readable or writable by applicants.
+    match /credentials/{uid} {
+      allow read, write, delete: if isAdmin();
     }
 
     match /admins/{uid} {

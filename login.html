@@ -28,23 +28,13 @@
       </div>
       <div id="msg"></div>
 
-      <!-- Applicant: Sign in with Google -->
-      <div id="googleBox">
-        <h2 style="font-size:1.3rem">Applicant Login</h2>
-        <p class="muted small">Sign in with the <b>Google / Gmail account you applied with</b>. You'll enter your password on Google's own secure page; we never see or store it.</p>
-        <button type="button" class="btn btn-google" id="googleBtn" style="width:100%">
-          <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-          <span>Continue with Google</span>
-        </button>
-      </div>
-
-      <!-- Staff: password login -->
-      <form id="loginForm" class="hidden" novalidate>
-        <h2 style="font-size:1.3rem">Staff login</h2>
+      <form id="loginForm" novalidate>
+        <h2 id="formTitle" style="font-size:1.3rem">Applicant Login</h2>
+        <p class="muted small" id="formHint">Log in with the email and password the programme team gave you, to view your application.</p>
         <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="li-pw">Password</label><input id="li-pw" type="password" autocomplete="current-password" required></div>
         <button class="btn btn-primary" style="width:100%" type="submit">Log in</button>
-        <p class="small" style="margin:14px 0 0;text-align:center"><button type="button" class="link-btn" id="forgotBtn">Forgot password?</button></p>
+        <p class="small muted" style="margin:14px 0 0;text-align:center">Forgot your password? Please contact the programme team and we'll reset it for you.</p>
       </form>
 
       <p class="small muted" style="margin:18px 0 0;text-align:center" id="switchRow"><button type="button" class="link-btn" id="switchBtn">Staff login</button></p>
@@ -57,32 +47,21 @@
 
     const $ = id => document.getElementById(id);
     const msg = (text, type = "error") => { $("msg").innerHTML = text ? `<div class="alert alert-${type}">${text}</div>` : ""; };
-    const next = new URLSearchParams(location.search).get("next") === "admin" ? "admin.html" : "dashboard.html";
-    const view = v => { $("googleBox").classList.toggle("hidden", v !== "google"); $("loginForm").classList.toggle("hidden", v !== "staff"); $("switchBtn").textContent = v === "staff" ? "Applicant login" : "Staff login"; };
-    view(next === "admin.html" ? "staff" : "google");
-    $("switchBtn").addEventListener("click", () => { msg(""); view($("loginForm").classList.contains("hidden") ? "staff" : "google"); });
+    const params = new URLSearchParams(location.search);
+    let next = params.get("next") === "admin" ? "admin.html" : "dashboard.html";
+
+    function setMode(staff) {
+      next = staff ? "admin.html" : "dashboard.html";
+      $("formTitle").textContent = staff ? "Staff login" : "Applicant Login";
+      $("formHint").textContent = staff ? "Sign in to the admin console." : "Log in with the email and password the programme team gave you, to view your application.";
+      $("switchBtn").textContent = staff ? "Applicant login" : "Staff login";
+      msg("");
+    }
+    setMode(next === "admin.html");
+    $("switchBtn").addEventListener("click", () => setMode($("formTitle").textContent !== "Staff login"));
 
     let busy = false;
-
-    // If we're returning from a Google redirect sign-in (common on phones), finish it.
-    (async () => {
-      try {
-        const u = await store.finishRedirectLogin();
-        if (u) { busy = true; location.replace(next); }
-      } catch (e) { msg(friendlyError(e)); }
-    })();
-
     store.onUser(u => { if (u && !busy) location.replace(next); });
-
-    $("googleBtn").addEventListener("click", async () => {
-      const btn = $("googleBtn"); busy = true; btn.disabled = true; msg("");
-      try {
-        const r = await store.signInWithGoogle();
-        if (r && r.redirecting) { btn.querySelector("span").textContent = "Redirecting to Google…"; return; }
-        location.replace(next);
-      }
-      catch (e) { busy = false; msg(friendlyError(e)); btn.disabled = false; }
-    });
 
     $("loginForm").addEventListener("submit", async e => {
       e.preventDefault();
@@ -90,15 +69,7 @@
       if (!email || !password) return msg("Please enter your email and password.");
       const btn = e.target.querySelector("button[type=submit]"); busy = true; btn.disabled = true; msg("");
       try { await store.signIn({ email, password }); location.replace(next); }
-      catch (err) { busy = false; msg(friendlyError(err)); }
-      finally { btn.disabled = false; }
-    });
-
-    $("forgotBtn").addEventListener("click", async () => {
-      const email = $("li-email").value.trim();
-      if (!email) return msg("Enter your email above, then click 'Forgot password?'.", "info");
-      try { await store.resetPassword(email); msg("Password reset link sent. Check your inbox.", "ok"); }
-      catch (e) { msg(friendlyError(e), "info"); }
+      catch (err) { busy = false; btn.disabled = false; msg(friendlyError(err)); }
     });
   </script>
 </body>

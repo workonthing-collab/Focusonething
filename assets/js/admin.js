@@ -81,7 +81,8 @@ function route() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("team") && role === "admin") return renderTeam();
   if (h.has("reports") && role === "admin") return renderReports();
-  if (h.has("logins") && role === "admin") return renderLogins();
+  if (h.has("logins") && role === "admin") return renderCredentials(h.get("email"), h.get("name"));
+  if (h.has("signins") && role === "admin") return renderLogins();
   if (h.has("new") && role === "admin") return renderEdit(null);
   if (h.get("edit") && role === "admin") return renderEdit(h.get("edit"));
   const id = h.get("app");
@@ -116,7 +117,7 @@ function renderList() {
     <div class="dash-head">
       <div><p class="small muted" style="margin:0 0 4px">${role === "admin" ? "Admin console" : "Reviewer console"}</p><h1>${role === "admin" ? "Applications" : "Assigned to you"}</h1></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${role === "admin" ? `<a class="btn btn-primary btn-sm" href="#new">+ Add startup</a><a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#logins">Sign-in log</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
+        ${role === "admin" ? `<a class="btn btn-primary btn-sm" href="#new">+ Add startup</a><a class="btn btn-outline btn-sm" href="#logins">Logins</a><a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#signins">Sign-in log</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
         <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
         ${role === "admin" ? `<button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button>` : ""}
       </div>
@@ -219,7 +220,7 @@ async function renderDetail(uid) {
   mine.scores ||= {};
 
   const docDefs = STEPS.find(x => x.id === "documents").docs;
-  const groups = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="font-size:1.1rem;margin:0">Application</h2>${isAdmin ? `<a class="btn btn-outline btn-sm" href="#edit=${encodeURIComponent(uid)}">Edit details</a>` : ""}</div>
+  const groups = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="font-size:1.1rem;margin:0">Application</h2>${isAdmin ? `<a class="btn btn-outline btn-sm" href="#edit=${encodeURIComponent(uid)}">Edit details</a><a class="btn btn-primary btn-sm" href="#logins&email=${encodeURIComponent(D(a).founderEmail || "")}&name=${encodeURIComponent(D(a).founderName || "")}">Create login</a>` : ""}</div>
     <table class="summary-table" style="margin:12px 0 18px">
       <tr><th>Application ID</th><td>${esc(a.applicationId || "—")}</td></tr>
       <tr><th>Submitted on</th><td>${esc(fmtDT(a.submittedAt) || "Not submitted")}</td></tr>
@@ -583,6 +584,100 @@ function renderReports() {
       ${bars("By state", group("state"))}
       ${bars("By stage", group("stage"))}
     </div>`;
+}
+
+// ── Portal logins (admin): create email+password logins for founders ──
+function genPassword() {
+  const a = "ABCDEFGHJKLMNPQRSTUVWXYZ", b = "abcdefghijkmnpqrstuvwxyz", n = "23456789";
+  const pick = s => s[Math.floor(Math.random() * s.length)];
+  let p = pick(a) + pick(b) + pick(b) + pick(b) + pick(n) + pick(n) + pick(b) + pick(a) + pick(n);
+  return p;
+}
+
+async function renderCredentials(prefillEmail, prefillName) {
+  root.innerHTML = `<p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Logins</h1></div></div>
+    <div class="alert alert-info">Loading…</div>`;
+  let creds = [];
+  try { creds = await store.listCredentials(); }
+  catch (e) { root.querySelector(".alert").outerHTML = `<div class="alert alert-error">Couldn't load logins. ${esc(friendlyError(e))}</div>`; return; }
+
+  root.innerHTML = `
+    <p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Logins</h1>
+      <p class="muted small" style="margin:4px 0 0;max-width:640px">Create a login for each founder: their email and a password you set. Share these with the founder so they can log in. Keep this page private — it shows passwords.</p></div></div>
+
+    <div class="panel" style="max-width:640px;margin-bottom:20px">
+      <h2 style="font-size:1.1rem;margin:0 0 4px">Create a login</h2>
+      <p class="muted small" style="margin:0 0 14px">Use a <b>new password you make up for this portal</b> — never the person's real email/Google password.</p>
+      <div id="cmsg"></div>
+      <div class="field"><label for="cl-name">Founder's name</label><input id="cl-name" type="text" value="${esc(prefillName || "")}"></div>
+      <div class="field"><label for="cl-email">Email</label><input id="cl-email" type="email" autocomplete="off" value="${esc(prefillEmail || "")}"></div>
+      <div class="field"><label for="cl-pw">Password</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="cl-pw" type="text" autocomplete="off" style="flex:1;min-width:160px" value="${esc(genPassword())}">
+          <button type="button" class="btn btn-outline btn-sm" id="cl-gen">Generate</button>
+        </div>
+        <p class="hint">At least 6 characters.</p>
+      </div>
+      <button class="btn btn-primary" id="cl-create" style="width:100%">Create login</button>
+    </div>
+
+    <h2 style="font-size:1.1rem;margin:0 0 10px">Existing logins (${creds.length})</h2>
+    <div class="table-wrap" id="credWrap"></div>`;
+
+  const draw = list => {
+    const wrap = root.querySelector("#credWrap");
+    wrap.innerHTML = list.length ? `<table class="data"><thead><tr><th>Name</th><th>Email</th><th>Password</th><th>Created</th><th></th></tr></thead>
+      <tbody>${list.map(c => `<tr data-uid="${esc(c.uid)}">
+        <td>${esc(c.name || "—")}</td>
+        <td>${esc(c.email)}</td>
+        <td><code class="pw" data-pw="${esc(c.password || "")}">••••••••</code> <button class="link-btn small" data-reveal>show</button> <button class="link-btn small" data-copy>copy</button></td>
+        <td class="small">${c.createdAt ? fmtDT(c.createdAt) : "—"}</td>
+        <td class="small"><button class="link-btn" data-reset>Reset</button> · <button class="link-btn" data-del>Remove</button></td>
+      </tr>`).join("")}</tbody></table>`
+      : `<div class="empty">No logins yet. Create one above.</div>`;
+
+    wrap.querySelectorAll("[data-reveal]").forEach(b => b.addEventListener("click", () => {
+      const code = b.parentElement.querySelector(".pw");
+      const shown = code.textContent !== "••••••••";
+      code.textContent = shown ? "••••••••" : code.dataset.pw;
+      b.textContent = shown ? "show" : "hide";
+    }));
+    wrap.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", async () => {
+      const row = b.closest("tr"); const email = row.children[1].textContent; const pw = row.querySelector(".pw").dataset.pw;
+      try { await navigator.clipboard.writeText(`Portal: ${location.origin}\nEmail: ${email}\nPassword: ${pw}`); toast("Login details copied"); } catch { toast("Couldn't copy"); }
+    }));
+    wrap.querySelectorAll("[data-reset]").forEach(b => b.addEventListener("click", async () => {
+      const row = b.closest("tr"); const uid = row.dataset.uid; const c = list.find(x => x.uid === uid);
+      const np = prompt(`New password for ${c.email}:`, genPassword());
+      if (!np) return;
+      try { await store.adminResetPassword({ uid, email: c.email, currentPassword: c.password, newPassword: np }); toast("Password updated"); renderCredentials(); }
+      catch (e) { toast(friendlyError(e)); }
+    }));
+    wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => {
+      const row = b.closest("tr"); const uid = row.dataset.uid; const c = list.find(x => x.uid === uid);
+      if (!confirm(`Remove the saved login details for ${c.email}? This only clears them from this list; the account can still log in until you reset it.`)) return;
+      try { await store.deleteCredential(uid); toast("Removed from list"); renderCredentials(); }
+      catch (e) { toast(friendlyError(e)); }
+    }));
+  };
+  draw(creds);
+
+  const cmsg = (t, type = "error") => { root.querySelector("#cmsg").innerHTML = t ? `<div class="alert alert-${type}">${t}</div>` : ""; };
+  root.querySelector("#cl-gen").addEventListener("click", () => { root.querySelector("#cl-pw").value = genPassword(); });
+  root.querySelector("#cl-create").addEventListener("click", async () => {
+    const name = root.querySelector("#cl-name").value.trim();
+    const email = root.querySelector("#cl-email").value.trim();
+    const password = root.querySelector("#cl-pw").value;
+    if (!email || !password) return cmsg("Enter an email and a password.");
+    const btn = root.querySelector("#cl-create"); btn.disabled = true; cmsg("");
+    try {
+      await store.adminCreateLogin({ email, password, name });
+      toast("Login created");
+      renderCredentials();
+    } catch (e) { btn.disabled = false; cmsg(friendlyError(e)); }
+  });
 }
 
 // ── Sign-in log (admin) ───────────────────────────────────────
