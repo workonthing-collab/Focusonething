@@ -81,6 +81,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Sign-in log: each signed-in user may append only their own entry; only admins read.
+    match /logins/{entryId} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+                    && request.resource.data.email == request.auth.token.email
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['email', 'name', 'uid', 'method', 'at']);
+      allow update, delete: if false;
+    }
+
     match /admins/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false; // add admins from the Firebase console only

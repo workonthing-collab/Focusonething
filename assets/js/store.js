@@ -1,5 +1,5 @@
 // Data layer: Firebase when configured, browser-only demo store otherwise.
-import { firebaseConfig, DEMO_MODE } from "./config.js";
+import { firebaseConfig, DEMO_MODE, site } from "./config.js";
 
 const FB = "https://www.gstatic.com/firebasejs/10.12.2/";
 let fb = null; // { auth, db, storage, mods }
@@ -15,6 +15,19 @@ async function loadFirebase() {
   const a = app.initializeApp(firebaseConfig);
   fb = { auth: auth.getAuth(a), db: fs.getFirestore(a), storage: st.getStorage(a), A: auth, F: fs, S: st };
   return fb;
+}
+
+// Records a sign-in to the /logins collection (the admin "Sign-in log").
+// Best-effort: a failure here never blocks the login itself.
+async function recordLogin(user, method) {
+  try {
+    const entry = { email: (user.email || "").toLowerCase(), name: user.displayName || user.name || "", uid: user.uid || "", method, at: new Date().toISOString() };
+    if (DEMO_MODE) { const l = LS.get("sfs_logins", []); l.push(entry); LS.set("sfs_logins", l); }
+    else { const { db, F } = await loadFirebase(); await F.addDoc(F.collection(db, "logins"), entry); }
+    // Optional: forward to a Google Sheet via an Apps Script web app, if configured.
+    const hook = (site && site.sheetWebhook) || "";
+    if (hook && !DEMO_MODE) { try { await fetch(hook, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(entry) }); } catch {} }
+  } catch {}
 }
 
 // ── Demo backend (localStorage) ───────────────────────────────
@@ -149,8 +162,34 @@ export const store = {
 
   async completeLoginLink(email, href) {
     const { auth, A } = await loadFirebase();
-    await A.signInWithEmailLink(auth, email.trim().toLowerCase(), href);
+    const res = await A.signInWithEmailLink(auth, email.trim().toLowerCase(), href);
     try { localStorage.removeItem("sfs_link_email"); } catch {}
+    await recordLogin(res.user, "email-link");
+  },
+
+  // Applicant login with a real Google account. Google collects the password
+  // on its own page; the portal only receives the verified email and name.
+  async signInWithGoogle() {
+    if (DEMO_MODE) {
+      const email = "demo.google@example.com";
+      LS.set("sfs_session", { uid: "demo_google", email, name: "Demo Google User", verified: true });
+      await recordLogin({ email, displayName: "Demo Google User", uid: "demo_google" }, "google");
+      demoEmit();
+      return;
+    }
+    const { auth, A } = await loadFirebase();
+    const provider = new A.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const res = await A.signInWithPopup(auth, provider);
+    await recordLogin(res.user, "google");
+  },
+
+  // Admin: list recorded sign-ins (newest first) for the sign-in log / export.
+  async listLogins() {
+    if (DEMO_MODE) return LS.get("sfs_logins", []).slice().sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+    const { db, F } = await loadFirebase();
+    const snap = await F.getDocs(F.collection(db, "logins"));
+    return snap.docs.map(d => d.data()).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
   },
 
   async resendVerification() {

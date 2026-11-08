@@ -81,6 +81,7 @@ function route() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("team") && role === "admin") return renderTeam();
   if (h.has("reports") && role === "admin") return renderReports();
+  if (h.has("logins") && role === "admin") return renderLogins();
   if (h.has("new") && role === "admin") return renderEdit(null);
   if (h.get("edit") && role === "admin") return renderEdit(h.get("edit"));
   const id = h.get("app");
@@ -115,7 +116,7 @@ function renderList() {
     <div class="dash-head">
       <div><p class="small muted" style="margin:0 0 4px">${role === "admin" ? "Admin console" : "Reviewer console"}</p><h1>${role === "admin" ? "Applications" : "Assigned to you"}</h1></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${role === "admin" ? `<a class="btn btn-primary btn-sm" href="#new">+ Add startup</a><a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
+        ${role === "admin" ? `<a class="btn btn-primary btn-sm" href="#new">+ Add startup</a><a class="btn btn-outline btn-sm" href="#reports">Reports</a><a class="btn btn-outline btn-sm" href="#logins">Sign-in log</a><a class="btn btn-outline btn-sm" href="#team">Reviewers (${reviewers.length})</a>` : ""}
         <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
         ${role === "admin" ? `<button class="btn btn-primary btn-sm" id="csvBtn">Export CSV</button>` : ""}
       </div>
@@ -582,6 +583,46 @@ function renderReports() {
       ${bars("By state", group("state"))}
       ${bars("By stage", group("stage"))}
     </div>`;
+}
+
+// ── Sign-in log (admin) ───────────────────────────────────────
+async function renderLogins() {
+  root.innerHTML = `<p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <div class="dash-head"><div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Sign-in log</h1></div></div>
+    <div class="alert alert-info">Loading sign-in records…</div>`;
+  let logs = [];
+  try { logs = await store.listLogins(); }
+  catch (e) { root.querySelector(".alert").outerHTML = `<div class="alert alert-error">Couldn't load the sign-in log. ${esc(friendlyError(e))}</div>`; return; }
+
+  const methodLabel = m => ({ "google": "Google", "email-link": "Email link", "password": "Password" }[m] || m || "—");
+  root.innerHTML = `
+    <p style="margin:0 0 12px"><a href="admin.html" class="small">← All applications</a></p>
+    <div class="dash-head">
+      <div><p class="small muted" style="margin:0 0 4px">Admin console</p><h1>Sign-in log</h1><p class="muted small" style="margin:4px 0 0">Every time an applicant signs in, their email, name and the time are recorded here. Passwords are never stored.</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" id="reLogins">Refresh</button>
+        <button class="btn btn-primary btn-sm" id="logCsv">Export to Google Sheets (CSV)</button>
+      </div>
+    </div>
+    <div class="stats"><button class="stat" style="cursor:default"><div class="n">${logs.length}</div><div class="l">Total sign-ins</div></button>
+      <button class="stat" style="cursor:default"><div class="n">${new Set(logs.map(l => l.email)).size}</div><div class="l">Unique people</div></button></div>
+    <div class="table-wrap">${logs.length ? `<table class="data"><thead><tr><th>Email</th><th>Name</th><th>Method</th><th>Date &amp; time</th></tr></thead>
+      <tbody>${logs.map(l => `<tr><td>${esc(l.email || "—")}</td><td>${esc(l.name || "—")}</td><td>${esc(methodLabel(l.method))}</td><td class="small">${l.at ? fmtDT(l.at) : "—"}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">No sign-ins recorded yet. They'll appear here the first time an applicant logs in.</div>`}</div>`;
+
+  root.querySelector("#reLogins").addEventListener("click", renderLogins);
+  root.querySelector("#logCsv").addEventListener("click", () => {
+    if (!logs.length) { toast("Nothing to export"); return; }
+    const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [["Email", "Name", "Method", "Date & time"].map(cell).join(",")]
+      .concat(logs.map(l => [l.email, l.name, methodLabel(l.method), l.at ? fmtDT(l.at) : ""].map(cell).join(",")));
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `srujan-signins-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  });
 }
 
 // ── Add / edit a startup record (admin) ───────────────────────

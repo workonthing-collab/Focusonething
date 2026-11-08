@@ -23,6 +23,7 @@ export const site = {
   // Fill ONLY with real information — never placeholder or estimated numbers.
   // Application fee policy shown on the site. Must be accurate.
   feePolicy: "There is no fee to apply.",
+  sheetWebhook: "",   // optional Google Apps Script URL to mirror sign-ins into a live Google Sheet
   operator: "",        // legal entity that runs the program, e.g. "XYZ Ventures Pvt Ltd"
   cin: "",             // its CIN / LLPIN
   address: "",         // registered or office address
