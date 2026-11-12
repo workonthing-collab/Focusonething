@@ -44,10 +44,12 @@
   <script type="module">
     import "./assets/js/common.js";
     import { store, friendlyError } from "./assets/js/store.js";
+    import { site } from "./assets/js/config.js";
 
     const $ = id => document.getElementById(id);
     const msg = (text, type = "error") => { $("msg").innerHTML = text ? `<div class="alert alert-${type}">${text}</div>` : ""; };
     const params = new URLSearchParams(location.search);
+    const loginClosed = !site.applicantLoginOpen;   // when closed, only admin / staff may sign in
     let next = params.get("next") === "admin" ? "admin.html" : "dashboard.html";
 
     function setMode(staff) {
@@ -57,19 +59,33 @@
       $("switchBtn").textContent = staff ? "Applicant login" : "Staff login";
       msg("");
     }
-    setMode(next === "admin.html");
+    // While applicant login is closed, default to staff login and explain.
+    setMode(loginClosed || next === "admin.html");
+    if (loginClosed) msg("Applicant login isn't open yet. Only programme staff can sign in for now. Please check back later.", "info");
     $("switchBtn").addEventListener("click", () => setMode($("formTitle").textContent !== "Staff login"));
 
-    let busy = false;
-    store.onUser(u => { if (u && !busy) location.replace(next); });
+    // Only admins / reviewers may finish signing in while applicant login is closed.
+    // Runs on page load (existing session) and after every sign-in.
+    async function gateAndGo(u) {
+      if (!u) return;
+      if (!loginClosed) { location.replace(next); return; }
+      let role = null;
+      try { role = await store.getRole(u.uid); } catch {}
+      if (role === "admin" || role === "reviewer") { location.replace(next); return; }
+      try { await store.signOut(); } catch {}
+      const btn = $("loginForm").querySelector("button[type=submit]"); if (btn) btn.disabled = false;
+      msg("Applicant login isn't open yet. Please check back later.", "info");
+    }
+
+    store.onUser(u => { if (u) gateAndGo(u); });
 
     $("loginForm").addEventListener("submit", async e => {
       e.preventDefault();
       const email = $("li-email").value, password = $("li-pw").value;
       if (!email || !password) return msg("Please enter your email and password.");
-      const btn = e.target.querySelector("button[type=submit]"); busy = true; btn.disabled = true; msg("");
-      try { await store.signIn({ email, password }); location.replace(next); }
-      catch (err) { busy = false; btn.disabled = false; msg(friendlyError(err)); }
+      const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true; msg("");
+      try { await store.signIn({ email, password }); }   // onUser -> gateAndGo handles the rest
+      catch (err) { btn.disabled = false; msg(friendlyError(err)); }
     });
   </script>
 </body>

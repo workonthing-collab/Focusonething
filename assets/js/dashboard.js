@@ -606,6 +606,12 @@ window.addEventListener("hashchange", () => { const h = location.hash.slice(1); 
 // Start once everything above is defined.
 store.onUser(async u => {
   if (!u) { location.replace("login.html"); return; }
+  // While applicant login is closed, only admins/reviewers may be here.
+  if (!site.applicantLoginOpen && !store.demo) {
+    let role = null;
+    try { role = await store.getRole(u.uid); } catch {}
+    if (role !== "admin" && role !== "reviewer") { try { await store.signOut(); } catch {} location.replace("login.html"); return; }
+  }
   if (user && user.uid === u.uid && user.verified === u.verified) return;
   user = u;
   document.getElementById("userEmail").textContent = u.email;
