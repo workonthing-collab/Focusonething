@@ -24,6 +24,7 @@ export const site = {
   // Application fee policy shown on the site. Must be accurate.
   feePolicy: "There is no fee to apply.",
   applicantLoginOpen: false,   // set true to let founders log in; false = admin/staff only
+  ticker: "Applications for the current cycle are now closed. All results will be declared on 12 November 2026.",   // scrolling top banner; leave "" to hide
   sheetWebhook: "",   // optional Google Apps Script URL to mirror sign-ins into a live Google Sheet
   operator: "",        // legal entity that runs the program, e.g. "XYZ Ventures Pvt Ltd"
   cin: "",             // its CIN / LLPIN

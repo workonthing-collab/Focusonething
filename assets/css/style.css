@@ -335,6 +335,18 @@ table.data tbody tr:last-child td { border-bottom: 0; }
 .backer { flex: 1 1 260px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); padding: 28px 26px; box-shadow: var(--shadow); display: flex; flex-direction: column; justify-content: center; min-height: 112px; }
 .backer-name { font-family: var(--head); font-weight: 600; font-size: 1.3rem; color: var(--navy); line-height: 1.2; }
 .backer-role { margin-top: 8px; color: var(--muted); font-size: .85rem; letter-spacing: .03em; }
+
+/* Scrolling announcement ticker (right to left) */
+.ticker { background: var(--navy); color: #fff; overflow: hidden; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,.12); }
+.ticker__track { display: inline-flex; min-width: 100%; width: max-content; will-change: transform; animation: ticker-scroll 28s linear infinite; }
+.ticker:hover .ticker__track { animation-play-state: paused; }
+.ticker__track span { display: inline-block; padding: 9px 2.75rem; font-size: .84rem; font-weight: 500; letter-spacing: .01em; }
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .ticker__track { animation: none; min-width: 0; width: 100%; justify-content: center; }
+  .ticker__track span:last-child { display: none; }
+  .ticker__track span { white-space: normal; text-align: center; }
+}
 @media (max-width: 560px) {
   .contact-list li { grid-template-columns: 1fr; gap: 2px; }
   .contact-list span { padding-top: 0; }

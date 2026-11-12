@@ -130,4 +130,17 @@ function renderTrust() {
     else el.remove();
   });
 }
+// Scrolling announcement ticker at the very top of the page (config.site.ticker).
+function renderTicker() {
+  if (!site.ticker || document.querySelector(".ticker")) return;
+  const bar = document.createElement("div");
+  bar.className = "ticker";
+  bar.setAttribute("role", "status");
+  bar.setAttribute("aria-label", site.ticker);
+  const t = esc(site.ticker);
+  bar.innerHTML = `<div class="ticker__track" aria-hidden="true"><span>${t}</span><span>${t}</span></div>`;
+  document.body.prepend(bar);
+}
+renderTicker();
+
 renderTrust();
